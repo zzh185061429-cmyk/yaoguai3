@@ -55,7 +55,7 @@ export function GalleryView({ onSelectChar }: GalleryViewProps) {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto z-10">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 pb-24">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 pb-24 cv-auto">
           {currentChars.map((name) => {
             const avatar = CHARACTER_AVATARS[name];
             const color = CHARACTER_COLORS[name] || 'bg-pop-yellow';

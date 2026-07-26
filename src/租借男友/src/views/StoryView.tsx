@@ -1,26 +1,32 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { PopCard } from "../components/ui/PopCard";
 import { PopButton } from "../components/ui/PopButton";
-import { History, ChevronRight, ChevronLeft, Play, Pause, Zap, FastForward, Flame, SkipForward, SkipBack, ChevronUp, ChevronDown } from "lucide-react";
+import { History, ChevronRight, ChevronLeft, Play, Pause, Zap, FastForward, Heart, SkipForward, SkipBack, ChevronUp, ChevronDown, X } from "lucide-react";
 import { useToast } from "../components/ToastProvider";
 import { useGameContext } from "../state/GameContext";
-import { parseScriptContent, ScriptLine } from "./scriptParser";
-import { getLocationBackground, preloadLocationBackgrounds, preloadScriptBackgrounds } from "../data/locationImages";
-import { getNsfwData, hasNsfwData, canTriggerNsfw, getNsfwTriggerLocation } from "../data/characterData";
+import { parseScriptContent, parseOptions, ScriptLine } from "./scriptParser";
+import { getAssistantFloors } from "../utils/floorNav";
+import { getNsfwData, hasNsfwData, canTriggerNsfw, CHARACTER_CHIBIS } from "../data/characterData";
+import { getLocationImage, getLocationImageData } from "../data/locationImages";
+import { isOutdoorLocation } from "../data/scheduleData";
+import { WeatherOverlay } from "../components/WeatherOverlay";
 import { cn } from "../utils";
+import { sfx } from "../audio/sfxPlayer";
+import { textSettings, useTextSettings, getTextDelay } from "../audio/textSettings";
 
-/** 将 <user> 替换为显示名 */
-function displayName(name: string): string {
-  return name === '<user>' ? '我' : name;
+/** 将 <user> 替换为显示名（玩家名优先，否则显示“我”）
+ *  如果说话人名字就是玩家自定义名，也返回玩家名（不做额外替换）
+ */
+function displayName(name: string, playerName?: string): string {
+  if (name === '<user>') return playerName || '我';
+  return name;
 }
 
-/** 打字机速度配置 */
-const SPEED_DELAY: Record<number, number> = {
-  1: 50,   // 普通
-  2: 20,   // 倍速
-  4: 5,    // 极速
-};
+/** 打字机速度配置（旧版兼容映射）
+ * 速度级别 0=瞬间, 1=慢, 2=普通, 3=快
+ * 实际延迟由 getTextDelay() 提供
+ */
 
 /** 场景中的角色信息 */
 interface SceneCharacter {
@@ -89,113 +95,167 @@ export function StoryView() {
   const [sceneCharacters, setSceneCharacters] = useState<SceneCharacter[]>([]);
 
   // ── 打字机控制状态 ──
-  const [speedLevel, setSpeedLevel] = useState(1);
+  // 从共享 textSettings 读取，与 SettingsPanel 同步
+  const { textSpeed, autoWaitMultiplier } = useTextSettings();
   const [isAutoMode, setIsAutoMode] = useState(false);
 
   // ── 文本框收起状态 ──
   const [isTextBoxCollapsed, setIsTextBoxCollapsed] = useState(false);
 
+  // ── 选项栏状态 ──
+  const [options, setOptions] = useState<string[]>([]);
+  const [optionsDismissed, setOptionsDismissed] = useState(false);
+
   // 使用 ref 跟踪跳过状态，避免触发 effect 重新执行
   const skipTypingRef = useRef(false);
+  // 跟踪上一次的场景 location，用于检测场景切换并清空立绘
+  const prevLocationKeyRef = useRef<string | null>(null);
 
   const { showToast } = useToast();
   const {
-    viewingFloorId, lastAssistantFloorId, currentLocation, gameTime,
+    viewingFloorId, setViewingFloor, lastAssistantFloorId,
+    isGenerating, generatingFloorId,
+    currentLocation, gameTime,
     isNsfwMode, nsfwStageIndex, nsfwCharacter,
     enterNsfwMode, exitNsfwMode, nextNsfwStage, prevNsfwStage,
-    unlockNsfw,
+    setScriptCharacterLocations, setPendingMessage,
+    playerName,
   } = useGameContext();
 
   // 读取指定楼层（或最新楼层）消息文本，解析 <content> 标签
   const targetFloorId = viewingFloorId ?? lastAssistantFloorId;
 
+  // ── 楼层翻页导航 ──
+  const [floors, setFloors] = useState<number[]>([]);
+  // 楼层列表随生成状态刷新
+  useEffect(() => {
+    setFloors(getAssistantFloors());
+  }, [lastAssistantFloorId, isGenerating, generatingFloorId]);
+
+  // 可翻页的楼层（生成中过滤未完成楼层）
+  const availableFloors = useMemo(() => {
+    if (isGenerating && generatingFloorId != null) {
+      return floors.filter(f => f < generatingFloorId);
+    }
+    return floors;
+  }, [floors, isGenerating, generatingFloorId]);
+
+  // 当前导航楼层（跟随最新时取最新已完成楼层，与 FloorSelector 的 displayFloor 逻辑一致）
+  const navFloor = viewingFloorId ?? (isGenerating ? lastAssistantFloorId : (generatingFloorId ?? lastAssistantFloorId));
+  const navIndex = navFloor != null ? availableFloors.indexOf(navFloor) : -1;
+  const canPrevFloor = navIndex > 0;
+  const canNextFloor = navIndex >= 0 && navIndex < availableFloors.length - 1;
+
+  // ── 选项栏：Q版小人随机分配（同一楼层内固定，换楼层后重新随机） ──
+  const optionChibis = useMemo(() => {
+    if (options.length === 0) return [];
+    const charNames = Object.keys(CHARACTER_CHIBIS);
+    const shuffled = [...charNames].sort(() => Math.random() - 0.5);
+    return options.map((_, i) => CHARACTER_CHIBIS[shuffled[i % shuffled.length]]);
+  }, [options]);
+
+  // 选项栏显示条件：有选项 + 未关闭 + 剧本播完
+  const showOptions = options.length > 0 && !optionsDismissed &&
+    currentIndex >= script.length - 1 && !isTyping;
+
+  // ── useMemo 缓存派生值，避免每次渲染都重新计算 ──
   // 获取当前 NSFW 阶段的背景图
-  const nsfwBackgroundUrl = (() => {
+  const nsfwBackgroundUrl = useMemo(() => {
     if (!isNsfwMode || !nsfwCharacter) return null;
     const data = getNsfwData(nsfwCharacter);
     if (!data) return null;
     const stage = data.stages[nsfwStageIndex];
     return stage?.imageUrl || null;
-  })();
+  }, [isNsfwMode, nsfwCharacter, nsfwStageIndex]);
 
-  // ── NSFW 相关逻辑 ──
-  // 从 script 中检测所有角色名（包括当前和之前出现的角色）
-  const currentSceneCharacters = (() => {
-    const chars = new Set<string>();
-    // 包含当前显示的角色
-    sceneCharacters.forEach(c => chars.add(c.speaker));
-    // 包含 script 中所有有立绘的角色（更全面地检测）
-    script.forEach(line => {
-      if (line.speaker && line.type !== 'narrator' && line.sprite) {
-        chars.add(line.speaker);
-      }
-    });
-    return Array.from(chars);
-  })();
-
-  // 判断是否可以显示 NSFW 按钮
-  const canShowNsfwButton = (() => {
-    if (isNsfwMode) return true; // NSFW 模式下始终显示（用于退出）
-    return currentSceneCharacters.some(char => hasNsfwData(char));
-  })();
-
-  // 获取第一个可触发的角色名
-  const getFirstNsfwCharacter = (): string | null => {
-    for (const char of currentSceneCharacters) {
-      if (hasNsfwData(char)) return char;
+  // 当前场景的地点信息（用于判断NSFW触发条件）
+  const sceneLocation = useMemo(() => {
+    const line = script[currentIndex];
+    if (line?.location) {
+      return { parent: line.location.parent, spot: line.location.spot };
     }
-    return null;
-  };
+    return { parent: currentLocation, spot: undefined };
+  }, [script, currentIndex, currentLocation]);
 
-  // 处理 NSFW 按钮点击
-  const handleNsfwClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isNsfwMode) {
-      exitNsfwMode();
-      showToast('已退出 NSFW 模式', 'normal');
-      return;
-    }
+  // 当前活跃角色（正在说话的角色，立绘正在显示）
+  const activeCharacter = useMemo(
+    () => sceneCharacters.find(c => c.isActive),
+    [sceneCharacters]
+  );
 
-    const targetChar = getFirstNsfwCharacter();
-    if (!targetChar) return;
-
-    if (!canTriggerNsfw(targetChar, currentLocation)) {
-      const triggerLoc = getNsfwTriggerLocation(targetChar);
-      showToast(`需要前往「${triggerLoc}」才能触发`, 'alert');
-      return;
-    }
-
-    enterNsfwMode(targetChar);
-    unlockNsfw(targetChar); // 解锁该角色的 NSFW CG
-    showToast(`已进入 ${targetChar} 的特殊模式，CG 已解锁！点击「🔥 特殊模式」可退出`, 'normal');
-  };
+  // 判断是否可以显示 NSFW 心型按钮
+  const canShowNsfwButton = useMemo(() => {
+    if (isNsfwMode) return true;
+    if (!activeCharacter) return false;
+    if (!hasNsfwData(activeCharacter.speaker)) return false;
+    if (!canTriggerNsfw(activeCharacter.speaker, sceneLocation.parent, sceneLocation.spot)) return false;
+    return true;
+  }, [isNsfwMode, activeCharacter, sceneLocation]);
 
   // 获取当前 NSFW 阶段信息
-  const nsfwData = nsfwCharacter ? getNsfwData(nsfwCharacter) : null;
+  const nsfwData = useMemo(
+    () => nsfwCharacter ? getNsfwData(nsfwCharacter) : null,
+    [nsfwCharacter]
+  );
   const currentStage = nsfwData?.stages[nsfwStageIndex];
   const hasNextStage = nsfwData ? nsfwStageIndex < nsfwData.stages.length - 1 : false;
   const hasPrevStage = nsfwStageIndex > 0;
+
+  // ── useCallback 缓存事件处理函数，避免子组件不必要的重渲染 ──
+  const handleNsfwClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isNsfwMode) {
+      sfx.play('nsfwExit');
+      exitNsfwMode();
+      showToast('已退出特殊模式', 'normal');
+      return;
+    }
+    if (!activeCharacter) return;
+    sfx.play('nsfwEnter');
+    enterNsfwMode(activeCharacter.speaker);
+    showToast(`已进入 ${activeCharacter.speaker} 的特殊模式，点击心型按钮可退出`, 'normal');
+  }, [isNsfwMode, activeCharacter, exitNsfwMode, enterNsfwMode, showToast]);
 
   useEffect(() => {
     if (targetFloorId == null) return;
     try {
       const msg = getChatMessages(targetFloorId)[0];
       if (msg) {
-        const parsed = parseScriptContent(msg.message);
+        const parsed = parseScriptContent(msg.message, playerName);
+        const parsedOptions = parseOptions(msg.message);
         setScript(parsed);
+        setOptions(parsedOptions);
+        setOptionsDismissed(false);
         setCurrentIndex(0);
         setSceneCharacters([]); // 重置场景
-
-        // ── 预加载背景图片 ──
-        const hour = gameTime.getHours();
-        preloadLocationBackgrounds(currentLocation, hour);
-        preloadScriptBackgrounds(msg.message, hour);
+        prevLocationKeyRef.current = null; // 重置场景跟踪
 
         // ── 预加载所有立绘 ──
         parsed.forEach(line => {
           if (line.sprite) {
             const img = new Image();
             img.src = line.sprite;
+          }
+        });
+
+        // ── 预加载所有场景背景图（白日+夜晚） ──
+        const sceneLocations = new Set<string>();
+        parsed.forEach(line => {
+          if (line.location?.parent) {
+            // 如果没有子地点，用父地点作为子地点查找
+            const spotName = line.location.spot || line.location.parent;
+            const key = `${line.location.parent}/${spotName}`;
+            if (!sceneLocations.has(key)) {
+              sceneLocations.add(key);
+              // 使用 getLocationImageData 获取图片数据，支持 <user>→玩家名 模糊匹配
+              const imgData = getLocationImageData(line.location.parent, spotName, playerName);
+              if (imgData) {
+                const dayImg = new Image();
+                dayImg.src = imgData.day;
+                const nightImg = new Image();
+                nightImg.src = imgData.night;
+              }
+            }
           }
         });
       } else {
@@ -207,21 +267,73 @@ export function StoryView() {
       setScript([]);
       setSceneCharacters([]);
     }
-  }, [targetFloorId]);
+  }, [targetFloorId, playerName]);
 
   const currentLine = script[currentIndex];
 
-  // ── 更新场景角色（当 currentLine 变化时） ──
+  // ── 从当前阅读进度中提取角色位置，覆盖日程表 ──
+  // 遍历 0→currentIndex，每个角色最后出现的场景位置即为当前位置
   useEffect(() => {
+    if (script.length === 0) {
+      setScriptCharacterLocations({});
+      return;
+    }
+    const charLocs: Record<string, string> = {};
+    const endIdx = Math.min(currentIndex, script.length - 1);
+    for (let i = 0; i <= endIdx; i++) {
+      const line = script[i];
+      // 只从有 speaker 的行提取（旁白无 speaker，跳过）
+      if (!line.speaker || line.speaker === '<user>' || line.speaker === '我') continue;
+      if (line.location) {
+        // 用 parent/spot 格式存储，以区分不同父地点下的同名子位置（如"主卧"）
+        const loc = line.location.spot
+          ? `${line.location.parent}/${line.location.spot}`
+          : line.location.parent;
+        if (loc) {
+          charLocs[line.speaker] = loc;
+        }
+      }
+    }
+    setScriptCharacterLocations(charLocs);
+  }, [script, currentIndex, setScriptCharacterLocations]);
+
+  // ── 更新场景角色（当 currentLine 变化时） ──
+  // 场景切换时清空所有立绘，只保留当前说话角色；同场景内保留多角色并暗化非说话角色
+  useEffect(() => {
+    // 计算当前行的场景标识，用于检测场景切换
+    const loc = currentLine?.location;
+    const currentLocationKey = loc ? `${loc.parent}/${loc.spot || ''}` : null;
+    const locationChanged = currentLocationKey !== prevLocationKeyRef.current;
+    prevLocationKeyRef.current = currentLocationKey;
+
+    // 旁白处理
     if (!currentLine?.speaker || currentLine.type === 'narrator') {
-      // 旁白：所有角色设为非活跃（立绘变暗/隐藏）
-      setSceneCharacters(prev => prev.map(c => ({ ...c, isActive: false })));
+      if (locationChanged) {
+        // 场景切换 + 旁白：清空所有立绘
+        setSceneCharacters([]);
+      } else {
+        // 同场景旁白：只暗化现有角色
+        setSceneCharacters(prev => prev.map(c => ({ ...c, isActive: false })));
+      }
       return;
     }
 
     const emotion = currentLine.emotion || '默认';
     const sprite = currentLine.sprite || '';
 
+    // 场景切换：清空后只显示当前说话角色
+    if (locationChanged) {
+      setSceneCharacters([{
+        speaker: currentLine.speaker!,
+        emotion,
+        sprite,
+        position: 'center',
+        isActive: true,
+      }]);
+      return;
+    }
+
+    // 同场景内更新
     setSceneCharacters(prev => {
       const existingIndex = prev.findIndex(c => c.speaker === currentLine.speaker);
 
@@ -253,6 +365,14 @@ export function StoryView() {
     });
   }, [currentLine]);
 
+  // ── 情绪音效：对话行切换时播放对应情绪音 ──
+  useEffect(() => {
+    if (!currentLine || currentLine.type === 'narrator') return;
+    if (currentLine.emotion && currentLine.emotion !== '默认') {
+      sfx.playEmotion(currentLine.emotion);
+    }
+  }, [currentLine]);
+
   // 打字机效果
   useEffect(() => {
     let rafId: number;
@@ -261,12 +381,19 @@ export function StoryView() {
     skipTypingRef.current = false;
 
     if (currentLine && currentIndex < script.length) {
+      // 瞬间显示模式：跳过打字机动画
+      if (textSpeed === 0) {
+        setDisplayedText(currentLine.text);
+        setIsTyping(false);
+        return;
+      }
+
       setIsTyping(true);
       setDisplayedText("");
 
       const fullText = currentLine.text;
       let i = 0;
-      const delay = SPEED_DELAY[speedLevel] || 50;
+      const delay = getTextDelay(textSpeed);
       let lastTime = performance.now();
 
       const typeChar = (timestamp: number) => {
@@ -287,9 +414,14 @@ export function StoryView() {
         lastTime = timestamp;
 
         if (i < fullText.length) {
-          const batchSize = speedLevel >= 4 ? 3 : 1;
+          // 快速模式下批量出字
+          const batchSize = textSpeed >= 3 ? 3 : 1;
           const endIndex = Math.min(i + batchSize, fullText.length);
           setDisplayedText(fullText.substring(0, endIndex));
+          // 打字机 blip — 仅对话/心理行播放，旁白不响
+          if (currentLine.type !== 'narrator') {
+            sfx.playBlip(currentLine.speaker);
+          }
           i = endIndex;
           rafId = requestAnimationFrame(typeChar);
         } else {
@@ -303,45 +435,94 @@ export function StoryView() {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [currentIndex, currentLine, script.length, speedLevel]);
+  }, [currentIndex, currentLine, script.length, textSpeed]);
 
   // Auto 模式
   useEffect(() => {
     if (isAutoMode && !isTyping && currentIndex < script.length - 1) {
-      const waitTime = Math.min(3000, Math.max(1000, (currentLine?.text.length || 0) * 100));
+      const baseWait = Math.min(3000, Math.max(1000, (currentLine?.text.length || 0) * 100));
+      const waitTime = baseWait * autoWaitMultiplier;
       const timer = setTimeout(() => {
         setCurrentIndex(prev => prev + 1);
       }, waitTime);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [isAutoMode, isTyping, currentIndex, script.length, currentLine]);
+  }, [isAutoMode, isTyping, currentIndex, script.length, currentLine, autoWaitMultiplier]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (!currentLine) return;
     if (isTyping) {
       skipTypingRef.current = true;
       setDisplayedText(currentLine.text);
       setIsTyping(false);
     } else {
+      sfx.play('click');
       if (currentIndex < script.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
         showToast("本章已读完", "normal");
       }
     }
-  };
+  }, [currentLine, isTyping, currentIndex, script.length, showToast]);
 
-  const handlePrev = (e: React.MouseEvent) => {
+  const handlePrev = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
     }
-  };
+  }, [currentIndex]);
+
+  // ── 楼层翻页处理 ──
+  const handlePrevFloor = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (canPrevFloor && navIndex > 0) {
+      sfx.play('pageTurn');
+      setViewingFloor(availableFloors[navIndex - 1]);
+    }
+  }, [canPrevFloor, navIndex, availableFloors, setViewingFloor]);
+
+  const handleNextFloor = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (canNextFloor && navIndex >= 0) {
+      sfx.play('pageTurn');
+      // 翻到最后一层时恢复"跟随最新"，与 FloorSelector 语义一致
+      if (navIndex + 1 === availableFloors.length - 1) {
+        setViewingFloor(null);
+      } else {
+        setViewingFloor(availableFloors[navIndex + 1]);
+      }
+    }
+  }, [canNextFloor, navIndex, availableFloors, setViewingFloor]);
+
+  // ── 选中选项：写入输入框（复用 pendingMessage 管道，自动展开 ChatBar） ──
+  const handleSelectOption = useCallback((option: string) => {
+    sfx.play('confirm');
+    setPendingMessage(option);
+    setOptionsDismissed(true);
+  }, [setPendingMessage]);
 
   // 当前情绪特效
   const currentEmotion = currentLine?.emotion || '默认';
   const screenEffect = EMOTION_EFFECTS[currentEmotion];
+
+  // 场景背景图（从当前行的场景标签获取，根据游戏时间自动选择白日/夜晚）
+  const sceneBackgroundUrl = useMemo(() => {
+    if (isNsfwMode) return null;
+    if (!currentLine?.location) return null;
+    const { parent, spot } = currentLine.location;
+    const spotName = spot || parent;
+    return getLocationImage(parent, spotName, gameTime, playerName);
+  }, [isNsfwMode, currentLine, gameTime, playerName]);
+
+  // 无背景图时的文字提示
+  const displayLocationName = useMemo(() => {
+    if (currentLine?.location) {
+      const { parent, spot } = currentLine.location;
+      return spot ? `${parent} · ${spot}` : parent;
+    }
+    return currentLocation || '未知地点';
+  }, [currentLine, currentLocation]);
 
   if (!currentLine) {
     return (
@@ -352,9 +533,9 @@ export function StoryView() {
   }
 
   return (
-    <div className="relative w-full h-full overflow-hidden font-sans">
+    <div className="relative w-full h-full overflow-hidden font-sans contain-strict">
 
-      {/* 全屏背景层 — 固定不动 */}
+      {/* 全屏背景层 — 场景背景图，随阅读进度切换 */}
       <div className="absolute inset-0 z-0">
         {(() => {
           // NSFW 模式下显示 CG 背景（全屏铺满）
@@ -369,29 +550,42 @@ export function StoryView() {
               />
             );
           }
-          // 正常模式显示地点背景
-          const bgUrl = getLocationBackground(currentLocation, gameTime.getHours());
-          if (bgUrl) {
+          // 场景背景图（带 crossfade 过渡）
+          if (sceneBackgroundUrl) {
             return (
-              <img
-                src={bgUrl}
-                alt={currentLocation}
-                className="w-full h-full object-cover"
-                style={{ willChange: 'transform' }}
-                decoding="async"
-              />
+              <AnimatePresence mode="sync">
+                <motion.img
+                  key={sceneBackgroundUrl}
+                  src={sceneBackgroundUrl}
+                  alt="场景背景"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                  className="w-full h-full object-cover absolute inset-0"
+                  style={{ willChange: 'transform' }}
+                  decoding="async"
+                />
+              </AnimatePresence>
             );
           }
-          // 如果没有找到背景图，显示黑色背景+地点名称提示
+          // 无背景图时显示纯色背景 + 地点名称
           return (
             <div className="w-full h-full bg-pop-black flex items-center justify-center">
               <div className="text-white/30 text-2xl font-black">
-                {currentLocation || '未知地点'}
+                {displayLocationName}
               </div>
             </div>
           );
         })()}
       </div>
+
+      {/* 天气视觉叠层 — 叠在背景图上方、渐变遮罩下方 */
+      <WeatherOverlay gameTime={gameTime} isOutdoor={(() => {
+        if (!currentLine?.location) return false;
+        const spotName = currentLine.location.spot || currentLine.location.parent;
+        return isOutdoorLocation(spotName) || isOutdoorLocation(currentLine.location.parent);
+      })()} />
 
       {/* 底部渐变遮罩 — 让文本更易读 */}
       <div className="absolute inset-0 bg-linear-to-t from-pop-black via-transparent to-transparent z-10 pointer-events-none"></div>
@@ -521,7 +715,7 @@ export function StoryView() {
                   )}
 
                   <div className={`px-4 md:px-6 py-1 md:py-2 pop-border border-4 text-xl md:text-2xl font-black italic -skew-x-6 text-pop-black mb-1 shadow-[2px_2px_0_#fff] ${currentLine.color === 'bg-white' ? 'bg-pop-yellow' : currentLine.color}`}>
-                    {displayName(currentLine.speaker!)}
+                    {displayName(currentLine.speaker!, playerName)}
                     {currentLine.emotion && currentLine.emotion !== '默认' && (
                       <span className="ml-2 text-sm font-normal opacity-70">[{currentLine.emotion}]</span>
                     )}
@@ -571,13 +765,13 @@ export function StoryView() {
                         "gap-2 pop-border border-white shadow-none font-black",
                         isNsfwMode
                           ? "bg-pop-pink text-white hover:bg-pop-pink/80 animate-pulse"
-                          : "bg-red-500 text-white hover:bg-red-600"
+                          : "bg-red-500/80 text-white hover:bg-red-500"
                       )}
                       onClick={handleNsfwClick}
                       title={isNsfwMode ? "点击退出特殊模式" : "点击进入特殊模式"}
                     >
-                      <Flame className={cn("w-4 h-4", isNsfwMode && "animate-bounce")} />
-                      <span className="hidden sm:inline">{isNsfwMode ? '🔥 特殊模式' : '特殊模式'}</span>
+                      <Heart className={cn("w-4 h-4", isNsfwMode && "fill-white animate-pulse")} />
+                      <span className="hidden sm:inline">{isNsfwMode ? '♥ 退出' : 'CG'}</span>
                     </PopButton>
                   )}
                   {/* NSFW 阶段切换按钮（仅在 NSFW 模式下显示） */}
@@ -622,28 +816,135 @@ export function StoryView() {
                     className="gap-2 bg-white/10 text-white hover:bg-white/20 pop-border border-white shadow-none"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSpeedLevel(prev => {
-                        if (prev === 1) return 2;
-                        if (prev === 2) return 4;
-                        return 1;
-                      });
+                      // 在 慢(1)→普通(2)→快(3) 之间循环（瞬间(0)只在设置面板中选）
+                      const next = textSpeed >= 3 ? 1 : textSpeed + 1;
+                      textSettings.setTextSpeed(next);
                     }}
-                    title={`当前速度: ${speedLevel === 1 ? '普通' : speedLevel === 2 ? '倍速' : '极速'}`}
+                    title={`当前速度: ${textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}`}
                   >
-                    {speedLevel === 4 ? <Zap className="w-4 h-4 text-pop-yellow" /> : <FastForward className="w-4 h-4" />}
-                    <span className="hidden sm:inline">{speedLevel === 1 ? '普通' : speedLevel === 2 ? '倍速' : '极速'}</span>
+                    {textSpeed >= 3 ? <Zap className="w-4 h-4 text-pop-yellow" /> : <FastForward className="w-4 h-4" />}
+                    <span className="hidden sm:inline">{textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}</span>
                   </PopButton>
                 </div>
-                {!isTyping && (
-                  <motion.div
-                    animate={{ x: [0, 8, 0] }}
-                    transition={{ repeat: Infinity, duration: 1 }}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* 楼层翻页 — 靠右，不破坏左侧按钮排布 */}
+                  <PopButton
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "gap-1 pop-border border-white shadow-none",
+                      canPrevFloor ? "bg-white/10 text-white hover:bg-white/20" : "bg-gray-600 text-gray-400 cursor-not-allowed"
+                    )}
+                    onClick={handlePrevFloor}
+                    disabled={!canPrevFloor}
+                    title="上一楼层"
                   >
-                    <ChevronRight className="w-10 h-10 text-pop-yellow" />
-                  </motion.div>
-                )}
+                    <ChevronUp className="w-4 h-4" />
+                    <span className="hidden sm:inline">上层</span>
+                  </PopButton>
+                  <PopButton
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "gap-1 pop-border border-white shadow-none",
+                      canNextFloor ? "bg-white/10 text-white hover:bg-white/20" : "bg-gray-600 text-gray-400 cursor-not-allowed"
+                    )}
+                    onClick={handleNextFloor}
+                    disabled={!canNextFloor}
+                    title="下一楼层"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                    <span className="hidden sm:inline">下层</span>
+                  </PopButton>
+                  {/* 箭头提示 */}
+                  {!isTyping && (
+                    <motion.div
+                      animate={{ x: [0, 8, 0] }}
+                      transition={{ repeat: Infinity, duration: 1 }}
+                    >
+                      <ChevronRight className="w-10 h-10 text-pop-yellow" />
+                    </motion.div>
+                  )}
+                </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Options Panel — galgame 风格：全屏波普遮罩 + 屏幕中央选项列表 */}
+      <AnimatePresence>
+        {showOptions && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 z-35 bg-pop-black/85 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            {/* 半色调波点装饰层 */}
+            <div className="absolute inset-0 bg-halftone opacity-20 pointer-events-none" />
+
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => setOptionsDismissed(true)}
+              className="absolute top-4 right-4 z-40 p-2 bg-pop-yellow text-pop-black pop-border clip-diagonal hover:scale-110 transition-transform shadow-pop-pink font-black"
+              title="关闭选项"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* 选项列表 — 从屏幕中央展开 */}
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 30 }}
+              transition={{ type: "spring", damping: 20, stiffness: 200, delay: 0.1 }}
+              className="w-full max-w-2xl flex flex-col gap-3 relative z-10"
+            >
+              {options.map((option, i) => {
+                // 交替使用不同波普配色
+                const colorScheme = i % 3 === 0
+                  ? "bg-pop-pink text-white shadow-pop-cyan"
+                  : i % 3 === 1
+                    ? "bg-pop-cyan text-pop-black shadow-pop-pink"
+                    : "bg-pop-yellow text-pop-black shadow-pop-pink";
+                return (
+                  <motion.button
+                    key={i}
+                    initial={{ opacity: 0, x: -40 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 + i * 0.08, type: "spring", damping: 18 }}
+                    onClick={() => handleSelectOption(option)}
+                    className={cn(
+                      "flex items-center gap-4 p-4 pop-border clip-diagonal font-black text-left",
+                      "hover:scale-[1.03] active:translate-x-1 active:translate-y-1 active:shadow-none",
+                      "transition-all duration-150 group relative overflow-hidden",
+                      colorScheme
+                    )}
+                  >
+                    {/* 半色调纹理 */}
+                    <div className="absolute inset-0 bg-halftone opacity-10 pointer-events-none" />
+
+                    {/* Q版小人 */}
+                    {optionChibis[i] && (
+                      <div className="relative z-10 shrink-0 w-16 h-16 md:w-20 md:h-20 flex items-center justify-center">
+                        <img
+                          src={optionChibis[i]}
+                          alt="chibi"
+                          className="w-full h-full object-contain group-hover:scale-125 group-hover:-rotate-6 transition-transform drop-shadow-[2px_2px_0_rgba(0,0,0,0.3)]"
+                          loading="eager"
+                        />
+                      </div>
+                    )}
+                    <span className="relative z-10 flex-1 text-base md:text-xl leading-snug">
+                      {option}
+                    </span>
+                    <ChevronRight className="relative z-10 w-7 h-7 md:w-8 md:h-8 shrink-0 group-hover:translate-x-2 transition-transform" />
+                  </motion.button>
+                );
+              })}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -656,7 +957,7 @@ export function StoryView() {
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute inset-y-0 left-0 w-full md:w-[400px] bg-pop-black/95 backdrop-blur-md z-50 pop-border border-l-0 flex flex-col border-r-4 border-pop-cyan shadow-[10px_0_0_rgba(0,229,255,0.2)]"
+            className="absolute inset-y-0 left-0 w-full md:w-100 bg-pop-black/95 backdrop-blur-md z-50 pop-border border-l-0 flex flex-col border-r-4 border-pop-cyan shadow-[10px_0_0_rgba(0,229,255,0.2)]"
           >
             <div className="p-4 bg-pop-cyan text-pop-black font-black text-2xl flex justify-between items-center clip-diagonal mx-2 mt-2 border-2 border-pop-black">
               <span>HISTORY LOG</span>
@@ -672,7 +973,7 @@ export function StoryView() {
                       <div className="flex items-center gap-2">
                         {log.avatar && <img src={log.avatar} alt="avatar" className="w-8 h-8 pop-border rounded-full object-cover object-top" />}
                         <div className={`font-black text-sm px-2 py-0.5 pop-border -skew-x-6 ${log.color === 'bg-white' ? 'bg-pop-yellow text-pop-black' : `${log.color} text-pop-black`}`}>
-                          {displayName(log.speaker!)}
+                          {displayName(log.speaker!, playerName)}
                           {log.emotion && log.emotion !== '默认' && (
                             <span className="ml-1 opacity-70">[{log.emotion}]</span>
                           )}

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { motion, AnimatePresence } from "motion/react";
 import { PopCard } from "./ui/PopCard";
 import { AlertTriangle, Info } from "lucide-react";
+import { sfx } from "../audio/sfxPlayer";
 
 type ToastType = "normal" | "alert";
 
@@ -23,6 +24,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback((message: string, type: ToastType = "normal") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, message, type }]);
+    sfx.play(type === "alert" ? "toastAlert" : "toastNormal");
     
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));

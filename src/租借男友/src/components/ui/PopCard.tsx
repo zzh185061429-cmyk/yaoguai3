@@ -6,7 +6,7 @@ interface PopCardProps extends React.HTMLAttributes<HTMLDivElement> {
   skew?: boolean;
 }
 
-export const PopCard = React.forwardRef<HTMLDivElement, PopCardProps>(
+export const PopCard = React.memo(React.forwardRef<HTMLDivElement, PopCardProps>(
   ({ className, variant = "default", skew = false, children, ...props }, ref) => {
     
     const baseStyles = "pop-border bg-white p-4 shadow-pop";
@@ -34,6 +34,6 @@ export const PopCard = React.forwardRef<HTMLDivElement, PopCardProps>(
       </div>
     );
   }
-);
+));
 
 PopCard.displayName = "PopCard";

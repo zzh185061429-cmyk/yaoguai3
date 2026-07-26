@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { HUD } from './components/HUD';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ChatBar } from './components/ChatBar';
@@ -13,16 +13,22 @@ import { DispatchView } from './views/DispatchView';
 import { ArchiveView } from './views/ArchiveView';
 import { GalleryView } from './views/GalleryView';
 import { GalleryDetailView } from './views/GalleryDetailView';
-import { ReadingModal } from './views/ReadingModal';
-import { ThinkingChainModal } from './views/ThinkingChainModal';
-import { VariableViewerModal } from './views/VariableViewerModal';
-import { DeleteFloorsModal } from './views/DeleteFloorsModal';
+import { LocationGalleryView } from './views/LocationGalleryView';
 import { regenerateCurrentFloor } from './utils/interaction';
-import { MessageSquare, Calendar, Users, Image, X, MessageCircle } from 'lucide-react';
+import { MessageSquare, Calendar, Users, Image, MapPin, X, MessageCircle } from 'lucide-react';
+import { BgmPlayer } from './components/BgmPlayer';
+import { WelcomeModal } from './components/modals/WelcomeModal';
+import { SettingsPanel } from './components/SettingsPanel';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './utils';
 
-type Tab = 'story' | 'dispatch' | 'archive' | 'gallery';
+// ── 懒加载模态框组件，减少初始包体积和初始渲染开销 ──
+const ReadingModal = lazy(() => import('./views/ReadingModal').then(m => ({ default: m.ReadingModal })));
+const ThinkingChainModal = lazy(() => import('./views/ThinkingChainModal').then(m => ({ default: m.ThinkingChainModal })));
+const VariableViewerModal = lazy(() => import('./views/VariableViewerModal').then(m => ({ default: m.VariableViewerModal })));
+const DeleteFloorsModal = lazy(() => import('./views/DeleteFloorsModal').then(m => ({ default: m.DeleteFloorsModal })));
+
+type Tab = 'story' | 'dispatch' | 'archive' | 'gallery' | 'locations';
 
 type GallerySubView = 'list' | 'detail';
 
@@ -36,13 +42,21 @@ function AppContent() {
   const [isVariableViewerOpen, setIsVariableViewerOpen] = useState(false);
   const [isReadingOpen, setIsReadingOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const { isEyeCareMode, isViewingHistory, viewingFloorId, lastAssistantFloorId, goToLatest, startGenerating, finishGenerating, isGenerating } = useGameContext();
+  const { isEyeCareMode, isViewingHistory, viewingFloorId, lastAssistantFloorId, goToLatest, startGenerating, finishGenerating, isGenerating, pendingMessage } = useGameContext();
   const { showToast } = useToast();
 
   // 检测脚本模式：通过 __TAVERN_SCRIPT_MODE__ 标记区分全屏策略和 CSS
   const isScriptMode = typeof (window as any).__TAVERN_SCRIPT_MODE__ !== 'undefined';
+
+  // 当有待发送消息时（地图/派单写入），自动展开输入栏
+  useEffect(() => {
+    if (pendingMessage) {
+      setIsChatOpen(true);
+    }
+  }, [pendingMessage]);
 
   // 监听全屏状态变化（用户按 Esc 退出等）— 仅前端模式需要
   useEffect(() => {
@@ -85,12 +99,14 @@ function AppContent() {
     setRegenerating(false);
     finishGenerating();
   };
-  const navItems = [
+  // ── useMemo 缓存静态导航项，避免每次渲染重建数组 ──
+  const navItems = useMemo(() => [
     { id: 'story', label: '剧情推进', icon: MessageSquare },
     { id: 'dispatch', label: '债务调度', icon: Calendar },
     { id: 'archive', label: '角色图鉴', icon: Users },
     { id: 'gallery', label: '画廊', icon: Image },
-  ] as const;
+    { id: 'locations', label: '地点图鉴', icon: MapPin },
+  ] as const, []);
 
   return (
     <div 
@@ -114,6 +130,7 @@ function AppContent() {
           onOpenVariables={() => setIsVariableViewerOpen(true)}
           onOpenReading={() => setIsReadingOpen(true)}
           onOpenDelete={() => setIsDeleteOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
           onRegenerate={handleRegenerate}
           regenerating={regenerating}
           isGenerating={isGenerating}
@@ -193,6 +210,7 @@ function AppContent() {
               }}
             />
           )}
+          {activeTab === 'locations' && <LocationGalleryView />}
         </main>
 
         {/* 底部输入栏 — 可折叠 */}
@@ -226,11 +244,22 @@ function AppContent() {
           )}
         </AnimatePresence>
 
-        {/* 全局 Modals */}
-        <ThinkingChainModal isOpen={isThinkingOpen} onClose={() => setIsThinkingOpen(false)} />
-        <VariableViewerModal isOpen={isVariableViewerOpen} onClose={() => setIsVariableViewerOpen(false)} />
-        <ReadingModal isOpen={isReadingOpen} onClose={() => setIsReadingOpen(false)} />
-        <DeleteFloorsModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} />
+        {/* BGM 播放器 — 浮动在右下角 */}
+        <BgmPlayer />
+
+        {/* 设置面板 */}
+        <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+        {/* 欢迎弹窗 — 每个新聊天文件首次打开时显示 */}
+        <WelcomeModal isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen} />
+
+        {/* 全局 Modals — 懒加载，仅在打开时渲染 */}
+        <Suspense fallback={null}>
+          <ThinkingChainModal isOpen={isThinkingOpen} onClose={() => setIsThinkingOpen(false)} />
+          <VariableViewerModal isOpen={isVariableViewerOpen} onClose={() => setIsVariableViewerOpen(false)} />
+          <ReadingModal isOpen={isReadingOpen} onClose={() => setIsReadingOpen(false)} />
+          <DeleteFloorsModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} />
+        </Suspense>
 
       </div>
     </div>

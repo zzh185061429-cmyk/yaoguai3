@@ -7,7 +7,10 @@ interface PopButtonProps extends HTMLMotionProps<"button"> {
   size?: "sm" | "md" | "lg";
 }
 
-export const PopButton = React.forwardRef<HTMLButtonElement, PopButtonProps>(
+// ── 缓存静态对象，避免每次渲染创建新对象导致子组件重渲染 ──
+const WHILE_TAP = { scale: 0.98 } as const;
+
+const PopButtonInner = React.forwardRef<HTMLButtonElement, PopButtonProps>(
   ({ className, variant = "primary", size = "md", children, ...props }, ref) => {
     
     const baseStyles = "relative inline-flex items-center justify-center font-bold uppercase transition-all duration-100 pop-border clip-diagonal active:translate-x-[4px] active:translate-y-[4px] active:shadow-none focus:outline-none";
@@ -28,7 +31,7 @@ export const PopButton = React.forwardRef<HTMLButtonElement, PopButtonProps>(
     return (
       <motion.button
         ref={ref}
-        whileTap={{ scale: 0.98 }}
+        whileTap={WHILE_TAP}
         className={cn(baseStyles, variants[variant], sizes[size], className)}
         {...props}
       >
@@ -37,5 +40,8 @@ export const PopButton = React.forwardRef<HTMLButtonElement, PopButtonProps>(
     );
   }
 );
+
+// ── React.memo 包装，避免父组件重渲染时 PopButton 跟着重渲染 ──
+export const PopButton = React.memo(PopButtonInner);
 
 PopButton.displayName = "PopButton";

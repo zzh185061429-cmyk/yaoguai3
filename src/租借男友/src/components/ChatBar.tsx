@@ -3,6 +3,7 @@ import { Send, X, Loader, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useGameContext } from '../state/GameContext';
 import { useToast } from '../components/ToastProvider';
+import { sfx } from '../audio/sfxPlayer';
 
 /**
  * 底部输入栏 — 可折叠
@@ -37,6 +38,7 @@ export function ChatBar({ onClose }: { onClose: () => void }) {
 
     setText('');
     setPendingMessage('');
+    sfx.play('send');
 
     // 通知 GameContext 开始生成，锁定当前画面
     startGenerating();
@@ -51,6 +53,7 @@ export function ChatBar({ onClose }: { onClose: () => void }) {
       console.info('[ChatBar] AI 生成完成');
     } catch (err: any) {
       console.error('[ChatBar] 发送/生成失败:', err?.message || err);
+      sfx.play('error');
       showToast('消息发送失败，请重试', 'alert');
       // 恢复文本以便重试
       setText(trimmed);

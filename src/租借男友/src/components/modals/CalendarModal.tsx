@@ -12,13 +12,14 @@ export function CalendarModal() {
   const [currentMonthIndex, setCurrentMonthIndex] = useState(gameTime.getMonth());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
-  // 日历打开时或 gameTime 变化时自动定位到游戏当前月份
+  // 日历打开时自动定位到游戏当前月份（仅打开时执行一次，不监听 gameTime 变化）
   useEffect(() => {
     if (isCalendarOpen) {
       setCurrentYear(gameTime.getFullYear());
       setCurrentMonthIndex(gameTime.getMonth());
     }
-  }, [isCalendarOpen, gameTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCalendarOpen]);
 
   if (!isCalendarOpen) return null;
 

@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
+import { getAllCharacterLocations } from '../data/scheduleData';
+import { getWeather } from '../data/weather';
 
 export type CurrentOrder = {
   charName: string;
@@ -46,6 +48,9 @@ type GameContextType = {
   remainingDebt: number;
   isEyeCareMode: boolean;
   setIsEyeCareMode: (v: boolean) => void;
+  /** 天气粒子特效（雨/雪/雾/闪电）开关，默认开启 */
+  weatherParticlesEnabled: boolean;
+  setWeatherParticlesEnabled: (v: boolean) => void;
   gameTime: Date;
   currentWeekday: string;
   currentLocation: string;
@@ -59,6 +64,9 @@ type GameContextType = {
   /** null = 跟随最新楼层；number = 查看指定楼层 */
   viewingFloorId: number | null;
   setViewingFloor: (floorId: number | null) => void;
+  /** 从当前正文中解析出的角色位置覆盖（优先于日程表），key=角色名 value=地点名 */
+  scriptCharacterLocations: Record<string, string>;
+  setScriptCharacterLocations: (locs: Record<string, string>) => void;
   /** 最新 assistant 楼层号（用于 StoryView 默认数据源 + MVU 变量读取） */
   lastAssistantFloorId: number | null;
   /** 是否正在查看历史楼层（而非最新） */
@@ -73,6 +81,15 @@ type GameContextType = {
   startGenerating: () => void;
   /** 结束生成：解锁 */
   finishGenerating: () => void;
+  // ── 玩家名 & 欢迎弹窗 ──
+  /** 玩家自定义名字（用于将 AI 输出的玩家名归一化为 <user>，以匹配场景背景图） */
+  playerName: string;
+  /** 设置玩家名并持久化到聊天变量 */
+  setPlayerName: (name: string) => void;
+  /** 是否显示欢迎弹窗（每个聊天文件首次打开时显示一次） */
+  showWelcome: boolean;
+  /** 关闭欢迎弹窗 */
+  setShowWelcome: (v: boolean) => void;
   // ── NSFW CG 模式 ──
   /** 是否处于 NSFW 模式 */
   isNsfwMode: boolean;
@@ -80,6 +97,8 @@ type GameContextType = {
   nsfwStageIndex: number;
   /** 当前 NSFW 角色名（进入模式时确定） */
   nsfwCharacter: string | null;
+  /** 已解锁 NSFW 画廊的角色列表（触发过一次后持久化到聊天变量） */
+  nsfwUnlocked: string[];
   /** 进入 NSFW 模式 */
   enterNsfwMode: (character: string) => void;
   /** 退出 NSFW 模式 */
@@ -88,13 +107,6 @@ type GameContextType = {
   nextNsfwStage: () => void;
   /** 切换到上一个 NSFW 阶段 */
   prevNsfwStage: () => void;
-  // ── NSFW CG 解锁状态 ──
-  /** 已解锁的 NSFW CG 角色集合 */
-  unlockedNsfwChars: Set<string>;
-  /** 检查某角色的 NSFW CG 是否已解锁 */
-  isNsfwUnlocked: (character: string) => boolean;
-  /** 解锁某角色的 NSFW CG（持久化到角色卡变量） */
-  unlockNsfw: (character: string) => void;
 };
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
@@ -216,6 +228,22 @@ const EMPTY_DISPATCH: MvuDispatchData = {
   任务描述: '待生成',
 };
 
+/** 格式化角色位置表为注入文本 */
+function formatLocationTable(
+  locations: ReturnType<typeof getAllCharacterLocations>,
+  playerLocation: string,
+  playerName: string,
+): string {
+  if (locations.length === 0) return '';
+  const lines = locations.map(loc => {
+    const fullLoc = loc.parentLocation ? `${loc.parentLocation}/${loc.location}` : loc.location;
+    return `${loc.character}：${fullLoc}（${loc.activity}）`;
+  });
+  const header = playerLocation ? `${playerName}：${playerLocation}` : '';
+  const body = [header, ...lines].filter(Boolean).join('\n');
+  return `【角色当前位置】\n${body}`;
+}
+
 // ── Provider ──
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
@@ -223,6 +251,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isEyeCareMode, setIsEyeCareMode] = useState(false);
+  // 天气粒子特效开关，localStorage 持久化，默认开启
+  const [weatherParticlesEnabled, setWeatherParticlesEnabled] = useState<boolean>(() => {
+    const stored = localStorage.getItem('weather-particles-enabled');
+    return stored === null ? true : stored === 'true';
+  });
+  const handleSetWeatherParticlesEnabled = useCallback((v: boolean) => {
+    setWeatherParticlesEnabled(v);
+    localStorage.setItem('weather-particles-enabled', String(v));
+  }, []);
 
   const [gameTime, setGameTime] = useState<Date>(new Date(2026, 9, 8, 19, 0, 0));
   const [currentWeekday, setCurrentWeekday] = useState('');
@@ -234,15 +271,97 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const [characterServiceStates, setCharacterServiceStates] = useState<Record<string, CharacterServiceState>>({});
 
+  // ── 玩家名 & 欢迎弹窗 ──
+  const [playerName, setPlayerNameState] = useState('');
+  const [showWelcome, setShowWelcome] = useState(false);
+
   // ── NSFW CG 模式状态 ──
   const [isNsfwMode, setIsNsfwMode] = useState(false);
   const [nsfwStageIndex, setNsfwStageIndex] = useState(0);
   const [nsfwCharacter, setNsfwCharacter] = useState<string | null>(null);
+  /** 已解锁 NSFW 画廊的角色列表 */
+  const [nsfwUnlocked, setNsfwUnlocked] = useState<string[]>([]);
+
+  // 加载 NSFW 解锁状态 + 玩家名 + 欢迎弹窗标记（从聊天变量持久化读取）
+  // 同时监听聊天文件变更，新聊天时重新检查
+  React.useEffect(() => {
+    const loadChatData = () => {
+      try {
+        const chatVars = getVariables({ type: 'chat' });
+        if (chatVars) {
+          // NSFW 解锁状态
+          if (Array.isArray((chatVars as any).nsfwUnlocked)) {
+            setNsfwUnlocked((chatVars as any).nsfwUnlocked as string[]);
+          }
+          // 玩家名
+          if (typeof (chatVars as any).playerName === 'string') {
+            setPlayerNameState((chatVars as any).playerName);
+          } else {
+            setPlayerNameState('');
+          }
+          // 欢迎弹窗：每个聊天文件首次打开时显示
+          if (!(chatVars as any).welcomeShown) {
+            setShowWelcome(true);
+          } else {
+            setShowWelcome(false);
+          }
+        }
+      } catch {
+        // 聊天变量可能尚未就绪
+      }
+    };
+
+    loadChatData();
+
+    // 监听聊天文件变更 — 新聊天时重新加载
+    const stop = eventOn(tavern_events.CHAT_CHANGED, () => {
+      loadChatData();
+    });
+
+    return () => stop.stop();
+  }, []);
+
+  // 设置玩家名并持久化到聊天变量
+  const setPlayerName = useCallback((name: string) => {
+    const trimmed = name.trim();
+    setPlayerNameState(trimmed);
+    try {
+      updateVariablesWith(vars => ({ ...vars, playerName: trimmed }), { type: 'chat' });
+      console.info('[GameContext] 玩家名已设置:', trimmed);
+    } catch {
+      console.warn('[GameContext] 无法持久化玩家名到聊天变量');
+    }
+  }, []);
+
+  // 关闭欢迎弹窗时标记为已显示
+  const setShowWelcomeWithPersist = useCallback((v: boolean) => {
+    setShowWelcome(v);
+    if (!v) {
+      try {
+        updateVariablesWith(vars => ({ ...vars, welcomeShown: true }), { type: 'chat' });
+        console.info('[GameContext] 欢迎弹窗已标记为已显示');
+      } catch {
+        console.warn('[GameContext] 无法持久化欢迎弹窗标记');
+      }
+    }
+  }, []);
 
   const enterNsfwMode = useCallback((character: string) => {
     setNsfwCharacter(character);
     setNsfwStageIndex(0);
     setIsNsfwMode(true);
+    // 标记该角色为已解锁，并持久化到聊天变量
+    setNsfwUnlocked(prev => {
+      if (prev.includes(character)) return prev;
+      const updated = [...prev, character];
+      try {
+        updateVariablesWith(vars => ({ ...vars, nsfwUnlocked: updated }), { type: 'chat' });
+      } catch {
+        console.warn('[NSFW] 无法持久化解锁状态到聊天变量');
+      }
+      console.info(`[NSFW] 解锁 ${character} 的画廊 CG`);
+      return updated;
+    });
     console.info(`[NSFW] 进入 ${character} 的 NSFW 模式`);
   }, []);
 
@@ -261,42 +380,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setNsfwStageIndex(prev => Math.max(0, prev - 1));
   }, []);
 
-  // ── NSFW CG 解锁状态（持久化到角色卡变量） ──
-  const [unlockedNsfwChars, setUnlockedNsfwChars] = useState<Set<string>>(() => {
-    // 从角色卡变量读取已解锁的 NSFW 角色
-    try {
-      const saved = getVariables({ type: 'character' })?.unlockedNsfwChars;
-      if (Array.isArray(saved)) {
-        return new Set(saved as string[]);
-      }
-    } catch {
-      // 忽略错误
-    }
-    return new Set<string>();
-  });
-
-  const isNsfwUnlocked = useCallback((character: string): boolean => {
-    return unlockedNsfwChars.has(character);
-  }, [unlockedNsfwChars]);
-
-  const unlockNsfw = useCallback((character: string) => {
-    setUnlockedNsfwChars(prev => {
-      if (prev.has(character)) return prev;
-      const next = new Set(prev);
-      next.add(character);
-      // 持久化到角色卡变量
-      try {
-        replaceVariables({ unlockedNsfwChars: Array.from(next) }, { type: 'character' });
-        console.info(`[NSFW] 解锁 ${character} 的 CG，已持久化到角色卡变量`);
-      } catch (e) {
-        console.warn('[NSFW] 持久化解锁状态失败:', e);
-      }
-      return next;
-    });
-  }, []);
-
   // ── 前端输入栏文本管道：地图/派单写入，ChatBar 消费 ──
   const [pendingMessage, setPendingMessage] = useState('');
+
+  // ── 正文中角色位置覆盖（优先于日程表）──
+  const [scriptCharacterLocations, setScriptCharacterLocations] = useState<Record<string, string>>({});
 
   // ── 虚拟楼层导航 ──
   const [viewingFloorId, setViewingFloor] = useState<number | null>(null);
@@ -343,16 +431,71 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   // ── MVU 同步 + 服务状态机 ──
   // 用 ref 存储生成状态，避免闭包陷阱
-  const isGeneratingRef = React.useRef(isGenerating);
-  const generatingFloorIdRef = React.useRef(generatingFloorId);
+  const isGeneratingRef = useRef(isGenerating);
+  const generatingFloorIdRef = useRef(generatingFloorId);
   isGeneratingRef.current = isGenerating;
   generatingFloorIdRef.current = generatingFloorId;
+
+  // ── 角色位置表注入（should_scan: false，不触发世界书绿灯条目）──
+  const gameTimeRef = useRef(gameTime);
+  const scriptLocsRef = useRef(scriptCharacterLocations);
+  const currentLocRef = useRef(currentLocation);
+  const playerNameRef = useRef(playerName);
+  gameTimeRef.current = gameTime;
+  scriptLocsRef.current = scriptCharacterLocations;
+  currentLocRef.current = currentLocation;
+  playerNameRef.current = playerName;
+
+  React.useEffect(() => {
+    const stop = eventOn(tavern_events.GENERATION_AFTER_COMMANDS, () => {
+      const locations = getAllCharacterLocations(gameTimeRef.current, scriptLocsRef.current);
+      const displayName = playerNameRef.current || SillyTavern.name1 || '<user>';
+      const table = formatLocationTable(locations, currentLocRef.current, displayName);
+      // 算出当天天气，注入提示词（和角色位置表同源同构，不写 MVU）
+      const weather = getWeather(gameTimeRef.current);
+      const weatherPrompt = `【今日天气】${weather.type}（${weather.description}）`;
+      if (!table && !weatherPrompt) return;
+      injectPrompts([{
+        id: 'character-locations',
+        position: 'in_chat',
+        depth: 0,
+        role: 'system',
+        content: [table, weatherPrompt].filter(Boolean).join('\n'),
+        should_scan: false,
+      }], { once: true });
+      console.info(`[GameContext] 注入角色位置表 + 天气（${weather.type}）（should_scan: false）`);
+    });
+    return () => stop.stop();
+  }, []);
+
+  // 上一次同步的快照，用于跳过冗余 setState
+  const lastSyncRef = useRef({
+    floorId: -1,
+    time: 0,
+    weekday: '',
+    location: '',
+    totalDebt: -1,
+    totalIncome: -1,
+    remainingDebt: -1,
+    charStatesKey: '',
+    orderKey: '',
+  });
 
   React.useEffect(() => {
     let cancelled = false;
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     let eventStop: EventOnReturn | null = null;
     let checkMvuInterval: ReturnType<typeof setInterval> | null = null; // 用于降级模式定期检查 MVU
+
+    // 防抖：多个事件短时间内频繁触发时只执行一次同步
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedSync = (delay = 200) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        syncFromMvu();
+      }, delay);
+    };
 
     /** 获取最新 assistant 楼层号 */
     function getLatestAssistantId(): number | null {
@@ -385,7 +528,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const genId = generatingFloorIdRef.current;
 
         if (!genFlag) {
-          setLastAssistantFloorId(mvuMsgId);
+          if (lastSyncRef.current.floorId !== mvuMsgId) {
+            setLastAssistantFloorId(mvuMsgId);
+            lastSyncRef.current.floorId = mvuMsgId;
+          }
         } else {
           if (genId == null || mvuMsgId > genId) {
             setGeneratingFloorId(mvuMsgId);
@@ -459,16 +605,54 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           await Mvu.replaceMvuData(variables, { type: 'message', message_id: mvuMsgId });
         }
 
-        if (now) setGameTime(now);
-        setCurrentWeekday(parseMvuWeekday(variables));
-        setCurrentLocation(parseMvuLocation(variables));
+        // ── 批量更新：只在值真正变化时才 setState ──
+        if (now) {
+          const timeKey = now.getTime();
+          if (lastSyncRef.current.time !== timeKey) {
+            setGameTime(now);
+            lastSyncRef.current.time = timeKey;
+          }
+        }
+
+        const weekday = parseMvuWeekday(variables);
+        if (lastSyncRef.current.weekday !== weekday) {
+          setCurrentWeekday(weekday);
+          lastSyncRef.current.weekday = weekday;
+        }
+
+        const location = parseMvuLocation(variables);
+        if (lastSyncRef.current.location !== location) {
+          setCurrentLocation(location);
+          lastSyncRef.current.location = location;
+        }
+
         const economy = parseMvuEconomy(variables);
-        setTotalDebt(economy.totalDebt);
-        setTotalIncome(economy.totalIncome);
-        setRemainingDebt(economy.remainingDebt);
+        if (lastSyncRef.current.totalDebt !== economy.totalDebt) {
+          setTotalDebt(economy.totalDebt);
+          lastSyncRef.current.totalDebt = economy.totalDebt;
+        }
+        if (lastSyncRef.current.totalIncome !== economy.totalIncome) {
+          setTotalIncome(economy.totalIncome);
+          lastSyncRef.current.totalIncome = economy.totalIncome;
+        }
+        if (lastSyncRef.current.remainingDebt !== economy.remainingDebt) {
+          setRemainingDebt(economy.remainingDebt);
+          lastSyncRef.current.remainingDebt = economy.remainingDebt;
+        }
+
         const charStates = parseMvuCharacterStates(variables);
-        setCharacterServiceStates(charStates);
-        setCurrentOrder(deriveCurrentOrder(dispatch));
+        const charStatesKey = JSON.stringify(charStates);
+        if (lastSyncRef.current.charStatesKey !== charStatesKey) {
+          setCharacterServiceStates(charStates);
+          lastSyncRef.current.charStatesKey = charStatesKey;
+        }
+
+        const newOrder = deriveCurrentOrder(dispatch);
+        const orderKey = newOrder ? `${newOrder.charName}|${newOrder.task}|${newOrder.price}` : 'null';
+        if (lastSyncRef.current.orderKey !== orderKey) {
+          setCurrentOrder(newOrder);
+          lastSyncRef.current.orderKey = orderKey;
+        }
       } catch {
         // MVU 尚未就绪
       }
@@ -532,7 +716,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               // 注册事件监听
               try {
                 eventStop = eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, () => {
-                  syncFromMvu();
+                  debouncedSync();
                 });
               } catch (eventErr) {
                 console.warn('[GameContext] 注册 MVU 事件监听失败:', eventErr);
@@ -548,20 +732,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         await syncFromMvu();
         pollInterval = setInterval(syncFromMvu, 3000);
         eventStop = eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, () => {
-          syncFromMvu();
+          debouncedSync();
         });
         eventOn('story_interaction_done', () => {
           console.info('[GameContext] 收到 story_interaction_done，刷新数据');
-          syncFromMvu();
+          debouncedSync(100);
         });
         // 监听酒馆原生事件：AI 生成完成时刷新
         eventOn(tavern_events.MESSAGE_RECEIVED, () => {
           console.info('[GameContext] 收到 MESSAGE_RECEIVED，刷新数据');
-          syncFromMvu();
+          debouncedSync(300);
         });
         eventOn(tavern_events.MESSAGE_UPDATED, (message_id) => {
           console.info('[GameContext] 收到 MESSAGE_UPDATED，刷新数据，楼层:', message_id);
-          syncFromMvu();
+          debouncedSync(300);
         });
         // 监听流式生成完成事件
         eventOn(iframe_events.GENERATION_ENDED, () => {
@@ -578,6 +762,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (pollInterval) clearInterval(pollInterval);
       if (checkMvuInterval) clearInterval(checkMvuInterval);
       if (eventStop) eventStop.stop();
@@ -616,38 +801,55 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     console.info(`[acceptDispatch] 写入 MVU: ${dispatchData.客户1} 未开始, ${dispatchData.服务时长1}h`);
   }, []);
 
+  // ── useMemo 缓存 context value，避免每次渲染都创建新对象导致全量重渲染 ──
+  const contextValue = useMemo<GameContextType>(() => ({
+    currentOrder, setCurrentOrder,
+    isCalendarOpen, setIsCalendarOpen,
+    isMapOpen, setIsMapOpen,
+    totalDebt, totalIncome, remainingDebt,
+    isEyeCareMode, setIsEyeCareMode,
+    weatherParticlesEnabled, setWeatherParticlesEnabled: handleSetWeatherParticlesEnabled,
+    gameTime, currentWeekday, currentLocation,
+    characterServiceStates,
+    acceptDispatch,
+    pendingMessage, setPendingMessage,
+    viewingFloorId, setViewingFloor,
+    lastAssistantFloorId,
+    isViewingHistory,
+    goToLatest,
+    scriptCharacterLocations, setScriptCharacterLocations,
+    isGenerating,
+    generatingFloorId,
+    startGenerating,
+    finishGenerating,
+    // 玩家名 & 欢迎弹窗
+    playerName,
+    setPlayerName,
+    showWelcome,
+    setShowWelcome: setShowWelcomeWithPersist,
+    // NSFW
+    isNsfwMode,
+    nsfwStageIndex,
+    nsfwCharacter,
+    nsfwUnlocked,
+    enterNsfwMode,
+    exitNsfwMode,
+    nextNsfwStage,
+    prevNsfwStage,
+  }), [
+    currentOrder, isCalendarOpen, isMapOpen, totalDebt, totalIncome, remainingDebt,
+    isEyeCareMode, gameTime, currentWeekday, currentLocation, characterServiceStates,
+    weatherParticlesEnabled,
+    acceptDispatch, pendingMessage, viewingFloorId, lastAssistantFloorId, isViewingHistory,
+    scriptCharacterLocations,
+    isGenerating, generatingFloorId, startGenerating, finishGenerating,
+    playerName, setPlayerName, showWelcome, setShowWelcomeWithPersist,
+    isNsfwMode, nsfwStageIndex, nsfwCharacter, nsfwUnlocked,
+    enterNsfwMode, exitNsfwMode, nextNsfwStage, prevNsfwStage, goToLatest,
+  ]);
+
   return (
-    <GameContext.Provider value={{
-      currentOrder, setCurrentOrder,
-      isCalendarOpen, setIsCalendarOpen,
-      isMapOpen, setIsMapOpen,
-      totalDebt, totalIncome, remainingDebt,
-      isEyeCareMode, setIsEyeCareMode,
-      gameTime, currentWeekday, currentLocation,
-      characterServiceStates,
-      acceptDispatch,
-      pendingMessage, setPendingMessage,
-      viewingFloorId, setViewingFloor,
-      lastAssistantFloorId,
-      isViewingHistory,
-      goToLatest,
-      isGenerating,
-      generatingFloorId,
-      startGenerating,
-      finishGenerating,
-      // NSFW
-      isNsfwMode,
-      nsfwStageIndex,
-      nsfwCharacter,
-      enterNsfwMode,
-      exitNsfwMode,
-      nextNsfwStage,
-      prevNsfwStage,
-      // NSFW 解锁
-      unlockedNsfwChars,
-      isNsfwUnlocked,
-      unlockNsfw,
-    }}>
+    <GameContext.Provider value={contextValue}>
       {children}
     </GameContext.Provider>
   );

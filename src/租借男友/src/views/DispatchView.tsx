@@ -5,6 +5,7 @@ import { Briefcase, Skull, Clock, Dices } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useToast } from "../components/ToastProvider";
 import { useGameContext } from "../state/GameContext";
+import { sfx } from "../audio/sfxPlayer";
 
 const CHAR_DATA = {
   '温知晚': { avatar: 'https://i.postimg.cc/25BpPsRQ/1000213271.png', rate: 5000, color: 'border-pop-cyan', textColor: 'text-pop-cyan', weights: { '室内陪伴': 40, '外出约会': 30, '专项任务': 20, '活动出席': 10 } },
@@ -16,7 +17,9 @@ const CHAR_DATA = {
   '罗兰': { avatar: 'https://i.postimg.cc/HnZVHWtB/1000213897.png', rate: 10000, color: 'border-white', textColor: 'text-white', weights: { '外出约会': 25, '室内陪伴': 25, '活动出席': 25, '专项任务': 25 } },
   '霍千黎': { avatar: 'https://i.postimg.cc/RhsN9CTD/1000213899.png', rate: 10000, color: 'border-pop-black', textColor: 'text-gray-900', weights: { '外出约会': 25, '室内陪伴': 25, '活动出席': 25, '专项任务': 25 } },
   '季明舒': { avatar: 'https://i.postimg.cc/kgpwtzwq/nai-3587295711.png', rate: 500000, color: 'border-white', textColor: 'text-white', weights: { '外出约会': 40, '活动出席': 30, '室内陪伴': 20, '专项任务': 10 } },
-  '步玲燕': { avatar: 'https://i.postimg.cc/ht5M76MK/2729c1ef-df54-4b2e-85fe-d65322e28c65.png', rate: 200, color: 'border-pop-yellow', textColor: 'text-pop-yellow', weights: { '外出约会': 40, '专项任务': 30, '室内陪伴': 20, '活动出席': 10 } }
+  '步玲燕': { avatar: 'https://i.postimg.cc/ht5M76MK/2729c1ef-df54-4b2e-85fe-d65322e28c65.png', rate: 200, color: 'border-pop-yellow', textColor: 'text-pop-yellow', weights: { '外出约会': 40, '专项任务': 30, '室内陪伴': 20, '活动出席': 10 } },
+  '陆时予': { avatar: 'https://i.meee.com.tw/tPhxPog.png', rate: 10000, color: 'border-pop-cyan', textColor: 'text-pop-cyan', weights: { '室内陪伴': 50, '外出约会': 25, '活动出席': 15, '专项任务': 10 } },
+  '许不倦': { avatar: 'https://i.postimg.cc/kgKMgWHv/20a3b651-666d-4dd2-a651-13fee3a9eaf0.png', rate: 3000, color: 'border-pop-cyan', textColor: 'text-pop-cyan', weights: { '室内陪伴': 40, '外出约会': 30, '专项任务': 20, '活动出席': 10 } }
 };
 
 type DispatchState = {
@@ -82,6 +85,7 @@ export function DispatchView() {
 
   const handleRoll = () => {
     console.info('[DispatchView] handleRoll 被调用');
+    sfx.play('diceRoll');
     const chars = Object.keys(CHAR_DATA);
     const shuffled = [...chars].sort(() => 0.5 - Math.random());
     const char1 = shuffled[0];
@@ -199,6 +203,7 @@ export function DispatchView() {
         `📋${dispatchResult.char1}预约了${timeStr}的${dispatchResult.task1}任务，服务时长${dispatchResult.duration1.hours}小时，预期收入¥${price1Str}`,
       ].join('\\n');
       setPendingMessage(dialogText);
+      sfx.play('dispatchAccept');
       showToast(`已接受 ${dispatchResult.char1} 的委托`);
       setDispatchResult({ mode: 'idle', char1: null, task1: null, char2: null, task2: null });
     }
@@ -238,6 +243,7 @@ export function DispatchView() {
         `📋${dispatchResult.char1}预约了${t1}的${dispatchResult.task1}任务，同时${dispatchResult.char2}预约了${t2}的${dispatchResult.task2}任务，服务时长分别为${dispatchResult.duration1.hours}小时和${dispatchResult.duration2.hours}小时，预期总收入¥${totalPriceStr}`,
       ].join('\\n');
       setPendingMessage(dialogText);
+      sfx.play('dispatchAccept');
       showToast(`已开启时间管理大师模式！`);
       setDispatchResult({ mode: 'idle', char1: null, task1: null, char2: null, task2: null });
     }

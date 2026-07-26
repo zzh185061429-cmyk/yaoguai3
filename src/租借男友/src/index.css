@@ -89,12 +89,33 @@
   .contain-layout {
     contain: layout;
   }
+
+  /* 性能优化：综合 contain，限制布局/绘制/样式的影响范围 */
+  .contain-strict {
+    contain: layout style paint;
+  }
+
+  /* 性能优化：离屏内容跳过渲染，滚动时显著减少绘制开销 */
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
+  }
+
+  /* GPU 加速：将元素提升为独立图层，避免重绘时影响其他元素 */
+  .gpu-layer {
+    transform: translateZ(0);
+    will-change: transform;
+  }
 }
 
 body {
   background-color: #f0f0f0;
   color: var(--color-pop-black);
   overflow-x: hidden;
+  /* 优化：减少文本渲染开销 */
+  text-rendering: optimizeSpeed;
+  /* 优化：减少动画偏好时降低质量 */
+  -webkit-font-smoothing: antialiased;
 }
 
 /* 安全区适配 */

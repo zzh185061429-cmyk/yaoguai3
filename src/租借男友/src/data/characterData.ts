@@ -1,4 +1,4 @@
-/** 11个角色的立绘URL和颜色映射，供 StoryView 解析剧本时使用 */
+/** 13个角色的立绘URL和颜色映射，供 StoryView 解析剧本时使用 */
 
 export const CHARACTER_SPRITES: Record<string, Record<string, string>> = {
   沈千金: {
@@ -122,6 +122,28 @@ export const CHARACTER_SPRITES: Record<string, Record<string, string>> = {
     害怕: 'https://i.postimg.cc/158Q6M5k/hai-pa.png',
     惊讶: 'https://i.postimg.cc/pXmH8kL9/jing-ya.png',
   },
+  陆时予: {
+    默认: 'https://i.meee.com.tw/VcKCtW7.png',
+    生气: 'https://i.meee.com.tw/UnaV831.png',
+    开心: 'https://i.meee.com.tw/6GjDct8.png',
+    伤心: 'https://i.meee.com.tw/PXTQSm9.png',
+    嫌弃: 'https://i.meee.com.tw/FjFMnXD.png',
+    吃醋: 'https://i.meee.com.tw/aJywrYD.png',
+    害羞: 'https://i.meee.com.tw/9ZXtfJM.png',
+    害怕: 'https://i.meee.com.tw/VZsn88V.png',
+    惊讶: 'https://i.meee.com.tw/Ns7sptS.png',
+  },
+  许不倦: {
+    默认: 'https://i.postimg.cc/xTwB8Mvw/mo-ren.png',
+    生气: 'https://i.postimg.cc/GmvVytKg/sheng-qi.png',
+    开心: 'https://i.postimg.cc/BQrRbHTR/kai-xin.png',
+    伤心: 'https://i.postimg.cc/Sxc3MRdT/shang-xin.png',
+    嫌弃: 'https://i.postimg.cc/bw1WtrLf/xian-qi.png',
+    吃醋: 'https://i.postimg.cc/wTCnMLXk/chi-cu.png',
+    害羞: 'https://i.postimg.cc/Qx2vC1Qb/hai-xiu.png',
+    害怕: 'https://i.postimg.cc/ncyNrB4T/hai-pa.png',
+    惊讶: 'https://i.postimg.cc/zXs4vKC0/jing-ya.png',
+  },
 };
 
 export const EMOTION_LIST = [
@@ -148,6 +170,25 @@ export const CHARACTER_AVATARS: Record<string, string> = {
   罗兰: 'https://i.postimg.cc/HnZVHWtB/1000213897.png',
   霍千黎: 'https://i.postimg.cc/RhsN9CTD/1000213899.png',
   步玲燕: 'https://i.postimg.cc/ht5M76MK/2729c1ef-df54-4b2e-85fe-d65322e28c65.png',
+  陆时予: 'https://i.meee.com.tw/tPhxPog.png',
+  许不倦: 'https://i.postimg.cc/kgKMgWHv/20a3b651-666d-4dd2-a651-13fee3a9eaf0.png',
+};
+
+/** Q版小人头像，用于地图/地点显示 */
+export const CHARACTER_CHIBIS: Record<string, string> = {
+  椎名律: 'https://i.postimg.cc/V6KtDtp4/chui-ming-lu.png',
+  周念安: 'https://i.postimg.cc/cJMwt2cp/zhou-nian-an.png',
+  温知晚: 'https://i.postimg.cc/k5dW4qW5/wen-zhi-wan.png',
+  沈千金: 'https://i.postimg.cc/4xczsm7L/shen-qian-jin.png',
+  裴今歌: 'https://i.postimg.cc/qMzsDmkn/pei-jin-ge.png',
+  罗兰: 'https://i.postimg.cc/wxW5VKYW/luo-lan.png',
+  步玲燕: 'https://i.postimg.cc/hPyCfzGz/bu-ling-yan.png',
+  傅霁: 'https://i.postimg.cc/3RT1P2tb/fu-ji.png',
+  霍千黎: 'https://i.postimg.cc/nL8GDvfv/huo-qian-li.png',
+  季明舒: 'https://i.postimg.cc/50b5Pbtp/ji-ming-shu.png',
+  姜朝渔: 'https://i.postimg.cc/63crgg2V/jiang-chao-yu.png',
+  陆时予: 'https://i.meee.com.tw/LkTNpbA.png',
+  许不倦: 'https://i.postimg.cc/P519wJKs/xiao-ren.png',
 };
 
 export const CHARACTER_COLORS: Record<string, string> = {
@@ -155,13 +196,15 @@ export const CHARACTER_COLORS: Record<string, string> = {
   姜朝渔: 'bg-pop-cyan',
   裴今歌: 'bg-pop-pink',
   周念安: 'bg-pop-yellow',
-  季明舒: 'bg-pop-black',
+  季明舒: 'bg-pop-pink',
   傅霁: 'bg-white',
   椎名律: 'bg-pop-pink',
   温知晚: 'bg-pop-cyan',
   罗兰: 'bg-white',
-  霍千黎: 'bg-pop-black',
+  霍千黎: 'bg-pop-cyan',
   步玲燕: 'bg-pop-yellow',
+  陆时予: 'bg-white',
+  许不倦: 'bg-pop-cyan',
 };
 
 /** NSFW 立绘数据，目前为空，后续填入 URL 即可 */
@@ -177,6 +220,8 @@ export const CHARACTER_SPRITES_NSFW: Record<string, Record<string, string>> = {
   霍千黎: {},
   季明舒: {},
   步玲燕: {},
+  陆时予: {},
+  许不倦: {},
 };
 
 /** NSFW CG 阶段定义 */
@@ -194,7 +239,7 @@ export type NsfwCharacterData = {
 /** 当前可用的 NSFW CG 数据映射 */
 export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
   温知晚: {
-    triggerLocation: '艺术楼练功房',
+    triggerLocation: '燕大校区/艺术楼练功房',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/VkXP3bXW/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/yNBCBYTF/tuo-yi-fu1.png' },
@@ -213,7 +258,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   步玲燕: {
-    triggerLocation: '大学城公园',
+    triggerLocation: '大学城公园/人工湖岸',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/05t8bCJm/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/05t8bCJX/tuo-yi-fu1.png' },
@@ -232,7 +277,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   傅霁: {
-    triggerLocation: '傅霁公寓',
+    triggerLocation: '傅霁公寓/卧室',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/zfqw25XV/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/s2KYt8vg/tuo-yi-fu1.png' },
@@ -251,7 +296,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   霍千黎: {
-    triggerLocation: '霍罗同居公寓',
+    triggerLocation: '霍罗同居公寓/霍千黎卧室',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/Rh2ywqmC/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/tJ8wF7b1/tuo-yi-fu1.png' },
@@ -270,7 +315,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   季明舒: {
-    triggerLocation: '季明舒公寓',
+    triggerLocation: '季明舒公寓/主卧',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/8krSzVND/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/66GXpNt4/tuo-yi-fu.png' },
@@ -289,7 +334,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   姜朝渔: {
-    triggerLocation: '姜朝渔住所',
+    triggerLocation: '姜朝渔住所/主卧',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/FK2TP8qP/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/0QDchZRf/tuo-yi-fu1.png' },
@@ -308,7 +353,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   罗兰: {
-    triggerLocation: '霍罗同居公寓',
+    triggerLocation: '霍罗同居公寓/罗兰卧室',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/9QsPVTBS/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/BnR5sDg0/tuo-yi-fu1.png' },
@@ -327,7 +372,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   裴今歌: {
-    triggerLocation: '裴今歌住所',
+    triggerLocation: '裴今歌住所/二楼卧室',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/q7kJNDQ2/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/pd2WmckY/tuo-yi-fu1.png' },
@@ -346,7 +391,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   沈千金: {
-    triggerLocation: '沈家别墅',
+    triggerLocation: '沈家别墅/二楼千金卧室',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/P5JvCxxf/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/0yjKzQQG/tuo-yi-fu1.png' },
@@ -365,7 +410,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   周念安: {
-    triggerLocation: '回头草咖啡',
+    triggerLocation: '回头草咖啡/员工换装区',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/D01dYzsT/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/fyYjgbXw/tuo-yi-fu1.png' },
@@ -384,7 +429,7 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
     ],
   },
   椎名律: {
-    triggerLocation: '艺术楼琴房',
+    triggerLocation: '燕大校区/艺术楼琴房',
     stages: [
       { label: '开始', imageUrl: 'https://i.postimg.cc/kXzRtCtz/kai-shi.png' },
       { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/P5DpW7WJ/tuo-yi-fu1.png' },
@@ -402,6 +447,44 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
       { label: '事后', imageUrl: 'https://i.postimg.cc/fRdtcPcw/shi-hou.png' },
     ],
   },
+  陆时予: {
+    triggerLocation: '陆时予公寓/卧室',
+    stages: [
+      { label: '开始', imageUrl: 'https://i.meee.com.tw/nsX7Ess.png' },
+      { label: '脱衣服1', imageUrl: 'https://i.meee.com.tw/FxpTbVh.png' },
+      { label: '脱衣服2', imageUrl: 'https://i.meee.com.tw/0wxG9gI.png' },
+      { label: '插入1', imageUrl: 'https://i.meee.com.tw/XGwEtFj.png' },
+      { label: '插入2', imageUrl: 'https://i.meee.com.tw/sxeusRS.png' },
+      { label: '插入3', imageUrl: 'https://i.meee.com.tw/5gdZc4a.png' },
+      { label: '插入4', imageUrl: 'https://i.meee.com.tw/nQrjD2A.png' },
+      { label: '插入5', imageUrl: 'https://i.meee.com.tw/zdw0BMT.png' },
+      { label: '插入6', imageUrl: 'https://i.meee.com.tw/fjKmeia.png' },
+      { label: '插入7', imageUrl: 'https://i.meee.com.tw/8Cp3y0F.png' },
+      { label: '高潮1', imageUrl: 'https://i.meee.com.tw/HYXvzGS.png' },
+      { label: '高潮2', imageUrl: 'https://i.meee.com.tw/GIhKoTI.png' },
+      { label: '高潮3', imageUrl: 'https://i.meee.com.tw/qaCTJ8z.png' },
+      { label: '事后', imageUrl: 'https://i.meee.com.tw/4Fb7aoT.png' },
+    ],
+  },
+  许不倦: {
+    triggerLocation: '许不倦公寓/卧室',
+    stages: [
+      { label: '开始', imageUrl: 'https://i.postimg.cc/8zyKWvWm/kai-shi.png' },
+      { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/k4SfkhZ3/tuo-yi-fu1.png' },
+      { label: '脱衣服2', imageUrl: 'https://i.postimg.cc/Wz6S4qTn/tuo-yi-fu2.png' },
+      { label: '插入1', imageUrl: 'https://i.postimg.cc/P54G7ND7/cha-ru1.png' },
+      { label: '插入2', imageUrl: 'https://i.postimg.cc/VNGxYTDF/cha-ru2.png' },
+      { label: '插入3', imageUrl: 'https://i.postimg.cc/LXGGPPd6/cha-ru3.png' },
+      { label: '插入4', imageUrl: 'https://i.postimg.cc/bNx4Gdmh/cha-ru4.png' },
+      { label: '插入5', imageUrl: 'https://i.postimg.cc/JzKgqvwd/cha-ru5.png' },
+      { label: '插入6', imageUrl: 'https://i.postimg.cc/TPwsH0fp/cha-ru6.png' },
+      { label: '插入7', imageUrl: 'https://i.postimg.cc/wvRG9B12/cha-ru7.png' },
+      { label: '高潮1', imageUrl: 'https://i.postimg.cc/cCQk85Mz/gao-chao1.png' },
+      { label: '高潮2', imageUrl: 'https://i.postimg.cc/9FhnjCC6/gao-chao2.png' },
+      { label: '高潮3', imageUrl: 'https://i.postimg.cc/GhxSLVpB/gao-chao3.png' },
+      { label: '事后', imageUrl: 'https://i.postimg.cc/hG62Zq2m/shi-hou.png' },
+    ],
+  },
 };
 
 /** 检查角色是否有 NSFW CG 数据 */
@@ -414,24 +497,25 @@ export function getNsfwData(character: string): NsfwCharacterData | undefined {
   return NSFW_CG_DATA[character];
 }
 
-/** 检查当前是否满足 NSFW 触发条件（角色有CG数据 + 当前地点是触发地点） */
-export function canTriggerNsfw(character: string, currentLocation: string): boolean {
+/** 检查当前是否满足 NSFW 触发条件（角色有CG数据 + 当前地点是触发地点）
+ *  triggerLocation 支持 "parent/spot" 格式用于消歧义（如多个地点都有"主卧"）
+ *  也支持简单字符串格式（如 "人工湖岸"），直接匹配 spot 或 parent
+ */
+export function canTriggerNsfw(character: string, parent: string, spot?: string): boolean {
   const data = NSFW_CG_DATA[character];
   if (!data) return false;
-  return data.triggerLocation === currentLocation;
+  const trigger = data.triggerLocation;
+  // 支持 "parent/spot" 格式：需要 parent 和 spot 都匹配
+  if (trigger.includes('/')) {
+    const [tParent, tSpot] = trigger.split('/');
+    return tParent === parent && tSpot === (spot || '');
+  }
+  // 简单格式：匹配 spot 或 parent
+  const currentLocation = spot || parent;
+  return trigger === currentLocation;
 }
 
 /** 获取角色的触发地点提示 */
 export function getNsfwTriggerLocation(character: string): string | undefined {
   return NSFW_CG_DATA[character]?.triggerLocation;
-}
-
-/** 获取所有有 NSFW CG 数据的角色名列表 */
-export function getNsfwCharacters(): string[] {
-  return Object.keys(NSFW_CG_DATA);
-}
-
-/** 获取角色的 NSFW CG 阶段列表（供画廊使用） */
-export function getNsfwStages(character: string): NsfwStage[] {
-  return NSFW_CG_DATA[character]?.stages || [];
 }

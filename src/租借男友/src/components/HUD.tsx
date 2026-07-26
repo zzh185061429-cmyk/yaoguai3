@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { PopCard } from "./ui/PopCard";
-import { Clock, MapPin, User, Briefcase, Eye, EyeOff, Menu, X, Maximize2, Minimize2, Brain, Database, BookText, Trash2, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
+import { Clock, MapPin, User, Briefcase, Eye, EyeOff, Menu, X, Maximize2, Minimize2, Brain, Database, BookText, Trash2, RefreshCw, ChevronUp, ChevronDown, Settings as SettingsIcon, Sun, Cloud, Cloudy, CloudRain, CloudDrizzle, CloudSnow, CloudFog, CloudLightning } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useGameContext } from "../state/GameContext";
 import { CalendarModal } from "./modals/CalendarModal";
 import { MapModal } from "./modals/MapModal";
 import { cn } from "../utils";
 import { FloorSelector } from "./FloorSelector";
+import { getWeather, type WeatherType } from "../data/weather";
 
 interface HUDProps {
   isSidebarOpen: boolean;
@@ -17,16 +18,45 @@ interface HUDProps {
   onOpenVariables: () => void;
   onOpenReading: () => void;
   onOpenDelete: () => void;
+  onOpenSettings: () => void;
   onRegenerate: () => void;
   regenerating: boolean;
   isGenerating?: boolean;
 }
 
-export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFullscreen, onOpenThinking, onOpenVariables, onOpenReading, onOpenDelete, onRegenerate, regenerating, isGenerating = false }: HUDProps) {
+export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFullscreen, onOpenThinking, onOpenVariables, onOpenReading, onOpenDelete, onOpenSettings, onRegenerate, regenerating, isGenerating = false }: HUDProps) {
   const { currentOrder, setIsCalendarOpen, setIsMapOpen, totalDebt, totalIncome, remainingDebt, isEyeCareMode, setIsEyeCareMode, gameTime, currentWeekday, currentLocation } = useGameContext();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const progress = totalDebt > 0 ? Math.min(100, Math.max(0, (totalIncome / totalDebt) * 100)) : 0;
+
+  const weather = getWeather(gameTime);
+
+  const weatherIcon = (type: WeatherType) => {
+    switch (type) {
+      case '晴': return <Sun className="w-4 h-4 shrink-0" />;
+      case '多云': return <Cloudy className="w-4 h-4 shrink-0" />;
+      case '阴': return <Cloud className="w-4 h-4 shrink-0" />;
+      case '小雨': return <CloudDrizzle className="w-4 h-4 shrink-0" />;
+      case '大雨': return <CloudRain className="w-4 h-4 shrink-0" />;
+      case '雪': return <CloudSnow className="w-4 h-4 shrink-0" />;
+      case '雾': return <CloudFog className="w-4 h-4 shrink-0" />;
+      case '雷暴': return <CloudLightning className="w-4 h-4 shrink-0" />;
+    }
+  };
+
+  const weatherColor = (type: WeatherType) => {
+    switch (type) {
+      case '晴': return 'bg-pop-yellow text-pop-black';
+      case '多云': return 'bg-gray-200 text-gray-700';
+      case '阴': return 'bg-gray-300 text-gray-800';
+      case '小雨': return 'bg-pop-cyan text-pop-black';
+      case '大雨': return 'bg-pop-cyan text-white';
+      case '雪': return 'bg-white text-pop-black';
+      case '雾': return 'bg-gray-200 text-gray-700';
+      case '雷暴': return 'bg-pop-pink text-white';
+    }
+  };
 
   return (
     <>
@@ -87,23 +117,32 @@ export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFull
 
               {/* Left column: 时间 / 地点 / 折叠按钮 — 大屏显示，竖屏隐藏到"更多" */}
               <div className="hidden lg:flex flex-col gap-2 shrink-0 pointer-events-auto">
-                <PopCard
-                  onClick={() => setIsCalendarOpen(true)}
-                  className="py-1 px-3 flex items-center gap-2 bg-pop-cyan clip-diagonal shadow-pop-cyan cursor-pointer hover:scale-105 transition-transform"
-                >
-                  <Clock className="w-4 h-4 shrink-0" />
-                  <span className="font-bold text-sm whitespace-nowrap">
-                    {currentWeekday || ['周日','周一','周二','周三','周四','周五','周六'][gameTime.getDay()]} {gameTime.getMonth() + 1}月{String(gameTime.getDate()).padStart(2, '0')}日 {gameTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </PopCard>
                 <div className="flex gap-2">
                   <PopCard
-                    onClick={() => setIsMapOpen(true)}
-                    className="py-1 px-3 flex items-center gap-2 bg-pop-yellow clip-diagonal shadow-pop-cyan cursor-pointer hover:scale-105 transition-transform flex-1"
+                    onClick={() => setIsCalendarOpen(true)}
+                    className="py-1 px-3 flex items-center gap-2 bg-pop-cyan clip-diagonal shadow-pop-cyan cursor-pointer hover:scale-105 transition-transform flex-1"
                   >
-                    <MapPin className="w-4 h-4 shrink-0" />
-                    <span className="font-bold text-sm whitespace-nowrap">{currentLocation}</span>
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span className="font-bold text-sm whitespace-nowrap">
+                      {currentWeekday || ['周日','周一','周二','周三','周四','周五','周六'][gameTime.getDay()]} {gameTime.getMonth() + 1}月{String(gameTime.getDate()).padStart(2, '0')}日 {gameTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </PopCard>
+                  <PopCard
+                    className={cn("py-1 px-2 flex items-center justify-center clip-diagonal cursor-default shrink-0", weatherColor(weather.type))}
+                    title={`${weather.type} · ${weather.description}`}
+                  >
+                    {weatherIcon(weather.type)}
+                  </PopCard>
+                </div>
+                <div className="flex gap-2">
+                <PopCard
+                  onClick={() => setIsMapOpen(true)}
+                  className="py-1 px-3 flex items-center gap-2 bg-pop-yellow clip-diagonal shadow-pop-cyan cursor-pointer hover:scale-105 transition-transform flex-1"
+                  title="打开地图"
+                >
+                  <MapPin className="w-4 h-4 shrink-0" />
+                  <span className="font-bold text-sm whitespace-nowrap">{currentLocation}</span>
+                </PopCard>
                   <PopCard
                     onClick={() => setIsEyeCareMode(!isEyeCareMode)}
                     className={`py-1 px-2 flex items-center justify-center cursor-pointer hover:scale-105 transition-transform clip-diagonal shrink-0 ${isEyeCareMode ? 'bg-[#cce3de] text-[#2c3e50]' : 'bg-gray-200 text-gray-700'}`}
@@ -153,6 +192,13 @@ export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFull
                   >
                     <Database className="w-4 h-4" />
                   </PopCard>
+                  <PopCard
+                    onClick={onOpenSettings}
+                    className="py-1 px-2 flex items-center justify-center bg-pop-cyan text-pop-black cursor-pointer hover:scale-105 hover:bg-pop-yellow transition-transform clip-diagonal shrink-0"
+                    title="设置"
+                  >
+                    <SettingsIcon className="w-4 h-4" />
+                  </PopCard>
                   <FloorSelector />
                 </div>
                 <PopCard
@@ -174,9 +220,15 @@ export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFull
                   <span className="font-bold text-xs">{gameTime.getMonth() + 1}/{gameTime.getDate()}</span>
                 </PopCard>
                 <PopCard
+                  className={cn("py-1 px-2 flex items-center justify-center clip-diagonal shrink-0", weatherColor(weather.type))}
+                  title={`${weather.type} · ${weather.description}`}
+                >
+                  {weatherIcon(weather.type)}
+                </PopCard>
+                <PopCard
                   onClick={() => setIsMapOpen(true)}
                   className="py-1 px-2 flex items-center gap-1 bg-pop-yellow text-pop-black cursor-pointer hover:scale-105 transition-transform clip-diagonal shrink-0"
-                  title="地点"
+                  title="地图"
                 >
                   <MapPin className="w-3.5 h-3.5" />
                   <span className="font-bold text-xs truncate max-w-[60px]">{currentLocation}</span>
@@ -229,6 +281,13 @@ export function HUD({ isSidebarOpen, onToggleSidebar, isFullscreen, onToggleFull
                   title="变量"
                 >
                   <Database className="w-3.5 h-3.5" />
+                </PopCard>
+                <PopCard
+                  onClick={onOpenSettings}
+                  className="py-1 px-2 flex items-center justify-center bg-pop-cyan text-pop-black cursor-pointer hover:scale-105 hover:bg-pop-yellow transition-transform clip-diagonal shrink-0"
+                  title="设置"
+                >
+                  <SettingsIcon className="w-3.5 h-3.5" />
                 </PopCard>
                 <div className="shrink-0">
                   <FloorSelector />
