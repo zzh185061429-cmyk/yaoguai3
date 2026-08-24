@@ -619,6 +619,28 @@ export const LOCATION_IMAGES: Record<string, Record<string, LocationImage>> = {
   },
 
   // ============================================================
+  // 织部宵公寓
+  // ============================================================
+  "织部宵公寓": {
+    "楼层走廊": {
+      day: "https://i.postimg.cc/MTmqNtgf/lou-ceng-zou-lang-bai-ri.png",
+      night: "https://i.postimg.cc/8kwTbKR5/lou-ceng-zou-lang-ye-wan.png",
+    },
+    "客厅与阳台": {
+      day: "https://i.postimg.cc/Pf020hzR/ke-ting-yu-yang-tai-bai-ri.png",
+      night: "https://i.postimg.cc/mZK8KRNp/ke-ting-yu-yang-tai-ye-wan.png",
+    },
+    "开放式厨房": {
+      day: "https://i.postimg.cc/ry7Q7cCQ/kai-fang-shi-chu-fang-bai-ri.png",
+      night: "https://i.postimg.cc/tR828ytB/kai-fang-shi-chu-fang-ye-wan.png",
+    },
+    "卧室": {
+      day: "https://i.postimg.cc/fW5Mv2cy/wo-shi-bai-ri.png",
+      night: "https://i.postimg.cc/BZNJCYTv/wo-shi-ye-wan.png",
+    },
+  },
+
+  // ============================================================
   // 省外地点（地图上属于"省外"区域，但图片以地点名为父级）
   // ============================================================
 

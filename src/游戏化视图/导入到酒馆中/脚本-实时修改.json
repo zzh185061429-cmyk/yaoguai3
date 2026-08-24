@@ -1,7 +1,0 @@
-{
-  "id": "e8f9a1b2-3c4d-5e6f-7a8b-9c0d1e2f3a4b",
-  "name": "游戏化视图-实时修改",
-  "content": "import 'http://localhost:5500/dist/游戏化视图/index.js'",
-  "info": "隐藏所有消息楼层，将前端界面移入固定覆盖层，提供稳定全屏体验",
-  "buttons": []
-}

@@ -1,0 +1,6 @@
+{
+  "name": "幻璃镜 (Mirage Glass)",
+  "description": "融合中国古风与现代感的Galgame前端原型框架",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

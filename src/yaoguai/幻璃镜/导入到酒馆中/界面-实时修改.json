@@ -1,0 +1,15 @@
+{
+  "id": "f1a2b3c4-5d6e-7f8a-9b0c-1d2e3f4a5b6c",
+  "scriptName": "幻璃镜-实时修改",
+  "findRegex": ".*",
+  "replaceString": "```\n<body>\n<script>\n$('body').load('http://localhost:5500/dist/yaoguai/幻璃镜/index.html')\n</script>\n</body>\n```",
+  "trimStrings": [],
+  "placement": [1, 2],
+  "disabled": true,
+  "markdownOnly": true,
+  "promptOnly": false,
+  "runOnEdit": false,
+  "substituteRegex": 0,
+  "minDepth": null,
+  "maxDepth": null
+}

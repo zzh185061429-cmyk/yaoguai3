@@ -1,4 +1,4 @@
-/** 13个角色的立绘URL和颜色映射，供 StoryView 解析剧本时使用 */
+/** 14个角色的立绘URL和颜色映射，供 StoryView 解析剧本时使用 */
 
 export const CHARACTER_SPRITES: Record<string, Record<string, string>> = {
   沈千金: {
@@ -144,6 +144,17 @@ export const CHARACTER_SPRITES: Record<string, Record<string, string>> = {
     害怕: 'https://i.postimg.cc/ncyNrB4T/hai-pa.png',
     惊讶: 'https://i.postimg.cc/zXs4vKC0/jing-ya.png',
   },
+  织部宵: {
+    默认: 'https://i.postimg.cc/d0hHZ1qQ/mo-ren.png',
+    生气: 'https://i.postimg.cc/6QFHrX3w/sheng-qi.png',
+    开心: 'https://i.postimg.cc/zfytHBJJ/kai-xin.png',
+    伤心: 'https://i.postimg.cc/LsGytpXF/shang-xin.png',
+    嫌弃: 'https://i.postimg.cc/zf4dCrBG/xian-qi.png',
+    吃醋: 'https://i.postimg.cc/ZqW7vRJf/chi-cu.png',
+    害羞: 'https://i.postimg.cc/9fD8wMck/hai-xiu.png',
+    害怕: 'https://i.postimg.cc/CKRPn1wQ/hai-pa.png',
+    惊讶: 'https://i.postimg.cc/tgsSnT9L/jing-ya.png',
+  },
 };
 
 export const EMOTION_LIST = [
@@ -172,6 +183,7 @@ export const CHARACTER_AVATARS: Record<string, string> = {
   步玲燕: 'https://i.postimg.cc/ht5M76MK/2729c1ef-df54-4b2e-85fe-d65322e28c65.png',
   陆时予: 'https://i.meee.com.tw/tPhxPog.png',
   许不倦: 'https://i.postimg.cc/kgKMgWHv/20a3b651-666d-4dd2-a651-13fee3a9eaf0.png',
+  织部宵: 'https://i.postimg.cc/j5dFqXLC/47b854c6-079a-45b8-ae37-ea7cbfa1b2d5.png',
 };
 
 /** Q版小人头像，用于地图/地点显示 */
@@ -189,6 +201,7 @@ export const CHARACTER_CHIBIS: Record<string, string> = {
   姜朝渔: 'https://i.postimg.cc/63crgg2V/jiang-chao-yu.png',
   陆时予: 'https://i.meee.com.tw/LkTNpbA.png',
   许不倦: 'https://i.postimg.cc/P519wJKs/xiao-ren.png',
+  织部宵: 'https://i.postimg.cc/DzRCrTZZ/xiao-ren.png',
 };
 
 export const CHARACTER_COLORS: Record<string, string> = {
@@ -205,6 +218,7 @@ export const CHARACTER_COLORS: Record<string, string> = {
   步玲燕: 'bg-pop-yellow',
   陆时予: 'bg-white',
   许不倦: 'bg-pop-cyan',
+  织部宵: 'bg-pop-yellow',
 };
 
 /** NSFW 立绘数据，目前为空，后续填入 URL 即可 */
@@ -222,6 +236,7 @@ export const CHARACTER_SPRITES_NSFW: Record<string, Record<string, string>> = {
   步玲燕: {},
   陆时予: {},
   许不倦: {},
+  织部宵: {},
 };
 
 /** NSFW CG 阶段定义 */
@@ -485,6 +500,25 @@ export const NSFW_CG_DATA: Record<string, NsfwCharacterData> = {
       { label: '事后', imageUrl: 'https://i.postimg.cc/hG62Zq2m/shi-hou.png' },
     ],
   },
+  织部宵: {
+    triggerLocation: '织部宵公寓/卧室',
+    stages: [
+      { label: '开始', imageUrl: 'https://i.postimg.cc/SKQXg2nc/kai-shi.png' },
+      { label: '脱衣服1', imageUrl: 'https://i.postimg.cc/Z5xBPF5c/tuo-yi-fu1.png' },
+      { label: '脱衣服2', imageUrl: 'https://i.postimg.cc/mgyz3Ng3/tuo-yi-fu2.png' },
+      { label: '插入1', imageUrl: 'https://i.postimg.cc/Kv4M2gf9/cha-ru1.png' },
+      { label: '插入2', imageUrl: 'https://i.postimg.cc/d0R7BRQ5/cha-ru2.png' },
+      { label: '插入3', imageUrl: 'https://i.postimg.cc/xCtXr0bB/cha-ru3.png' },
+      { label: '插入4', imageUrl: 'https://i.postimg.cc/cHsv5Krd/cha-ru4.png' },
+      { label: '插入5', imageUrl: 'https://i.postimg.cc/DZBSV2b9/cha-ru5.png' },
+      { label: '插入6', imageUrl: 'https://i.postimg.cc/tTS4S2KF/cha-ru6.png' },
+      { label: '插入7', imageUrl: 'https://i.postimg.cc/9M8Q8J6G/cha-ru7.png' },
+      { label: '高潮1', imageUrl: 'https://i.postimg.cc/5yDN1j9Z/gao-chao1.png' },
+      { label: '高潮2', imageUrl: 'https://i.postimg.cc/3NkJP2hG/gao-chao2.png' },
+      { label: '高潮3', imageUrl: 'https://i.postimg.cc/DfSGVXxk/gao-chao3.png' },
+      { label: '事后', imageUrl: 'https://i.postimg.cc/SKQXg2ng/shi-hou.png' },
+    ],
+  },
 };
 
 /** 检查角色是否有 NSFW CG 数据 */
@@ -518,4 +552,37 @@ export function canTriggerNsfw(character: string, parent: string, spot?: string)
 /** 获取角色的触发地点提示 */
 export function getNsfwTriggerLocation(character: string): string | undefined {
   return NSFW_CG_DATA[character]?.triggerLocation;
+}
+
+// ── 自动 NSFW CG 系统：阶段定义与工具函数 ──
+
+/** NSFW 剧情阶段 */
+export type NsfwPhase = '开始' | '脱衣服' | '插入' | '高潮' | '事后';
+
+/**
+ * 获取角色在某阶段的所有 CG 索引（基于 stage.label 前缀匹配）
+ * - 开始 → [0]
+ * - 脱衣服 → [1, 2]
+ * - 插入 → [3, 4, 5, 6, 7, 8, 9]
+ * - 高潮 → [10, 11, 12]
+ * - 事后 → [13]
+ */
+export function getNsfwPhaseIndices(character: string, phase: NsfwPhase): number[] {
+  const data = NSFW_CG_DATA[character];
+  if (!data) return [];
+  return data.stages
+    .map((s, i) => ({ label: s.label, index: i }))
+    .filter(({ label }) => label.startsWith(phase))
+    .map(({ index }) => index);
+}
+
+/**
+ * 根据当前场景地点，查找哪个角色的 triggerLocation 匹配
+ * 用于 [nsfw:开始] 时自动确定角色
+ */
+export function getCharacterByTriggerLocation(parent: string, spot?: string): string | null {
+  for (const [name, data] of Object.entries(NSFW_CG_DATA)) {
+    if (canTriggerNsfw(name, parent, spot)) return name;
+  }
+  return null;
 }

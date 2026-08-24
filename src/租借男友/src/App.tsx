@@ -3,53 +3,63 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { HUD } from './components/HUD';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ChatBar } from './components/ChatBar';
 import { GameProvider, useGameContext } from './state/GameContext';
 import { StoryView } from './views/StoryView';
-import { DispatchView } from './views/DispatchView';
-import { ArchiveView } from './views/ArchiveView';
-import { GalleryView } from './views/GalleryView';
-import { GalleryDetailView } from './views/GalleryDetailView';
-import { LocationGalleryView } from './views/LocationGalleryView';
 import { regenerateCurrentFloor } from './utils/interaction';
-import { MessageSquare, Calendar, Users, Image, MapPin, X, MessageCircle } from 'lucide-react';
-import { BgmPlayer } from './components/BgmPlayer';
+import { MessageCircle } from 'lucide-react';
 import { WelcomeModal } from './components/modals/WelcomeModal';
+import { ManualModal } from './components/modals/ManualModal';
 import { SettingsPanel } from './components/SettingsPanel';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './utils';
+import { useIsMobile, useMobileMode } from './hooks';
+import { PhoneProvider } from './state/PhoneContext';
+import { PhoneFloatButton } from './components/Phone/PhoneFloatButton';
+import { PhoneApp } from './components/Phone/PhoneApp';
+import { AchievementProvider } from './state/AchievementContext';
+import { AchievementToast } from './components/AchievementToast';
 
 // ── 懒加载模态框组件，减少初始包体积和初始渲染开销 ──
 const ReadingModal = lazy(() => import('./views/ReadingModal').then(m => ({ default: m.ReadingModal })));
 const ThinkingChainModal = lazy(() => import('./views/ThinkingChainModal').then(m => ({ default: m.ThinkingChainModal })));
 const VariableViewerModal = lazy(() => import('./views/VariableViewerModal').then(m => ({ default: m.VariableViewerModal })));
 const DeleteFloorsModal = lazy(() => import('./views/DeleteFloorsModal').then(m => ({ default: m.DeleteFloorsModal })));
-
-type Tab = 'story' | 'dispatch' | 'archive' | 'gallery' | 'locations';
-
-type GallerySubView = 'list' | 'detail';
+const MapModal = lazy(() => import('./components/modals/MapModal').then(m => ({ default: m.MapModal })));
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState<Tab>('story');
-  const [gallerySubView, setGallerySubView] = useState<GallerySubView>('list');
-  const [selectedGalleryChar, setSelectedGalleryChar] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
   const [isVariableViewerOpen, setIsVariableViewerOpen] = useState(false);
   const [isReadingOpen, setIsReadingOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isManualOpen, setIsManualOpen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const { isEyeCareMode, isViewingHistory, viewingFloorId, lastAssistantFloorId, goToLatest, startGenerating, finishGenerating, isGenerating, pendingMessage } = useGameContext();
+  const isMobile = useIsMobile();
+  const mobileOverride = useMobileMode();
+  // 仅当用户显式选择「手机模式」时显示手机边框（真实手机自动检测不显示边框）
+  const isPhoneFrame = mobileOverride === true;
+  const { isEyeCareMode, startGenerating, finishGenerating, pendingMessage, showWelcome } = useGameContext();
   const { showToast } = useToast();
 
   // 检测脚本模式：通过 __TAVERN_SCRIPT_MODE__ 标记区分全屏策略和 CSS
   const isScriptMode = typeof (window as any).__TAVERN_SCRIPT_MODE__ !== 'undefined';
+
+  // 全屏状态同步到全局，供 StoryView 等子组件读取
+  useEffect(() => {
+    (window as any).__isFullscreen__ = isFullscreen;
+  }, [isFullscreen]);
+
+  // 遮罩打开状态同步到全局（小手机 + 各模态框），供 StoryView 的滚轮/键盘判断是否该禁用
+  const isAnyOverlayOpen = isChatOpen || isThinkingOpen || isVariableViewerOpen || isReadingOpen || isDeleteOpen || isSettingsOpen || isManualOpen || showWelcome;
+  useEffect(() => {
+    (window as any).__anyOverlayOpen__ = isAnyOverlayOpen;
+  }, [isAnyOverlayOpen]);
 
   // 当有待发送消息时（地图/派单写入），自动展开输入栏
   useEffect(() => {
@@ -57,6 +67,34 @@ function AppContent() {
       setIsChatOpen(true);
     }
   }, [pendingMessage]);
+
+  // 欢迎弹窗关闭后，自动弹出说明书（每个聊天文件首次打开时显示一次）
+  const prevShowWelcomeRef = useRef(showWelcome);
+  useEffect(() => {
+    // 检测 showWelcome 从 true → false 的变化（欢迎弹窗刚关闭）
+    if (prevShowWelcomeRef.current && !showWelcome) {
+      try {
+        const chatVars = getVariables({ type: 'chat' }) as any;
+        if (!chatVars?.manualShown) {
+          setIsManualOpen(true);
+        }
+      } catch {
+        // 聊天变量可能尚未就绪，安全跳过
+      }
+    }
+    prevShowWelcomeRef.current = showWelcome;
+  }, [showWelcome]);
+
+  // 关闭说明书时标记为已显示
+  const handleManualClose = useCallback(() => {
+    setIsManualOpen(false);
+    try {
+      updateVariablesWith(vars => ({ ...vars, manualShown: true }), { type: 'chat' });
+      console.info('[App] 说明书已标记为已显示');
+    } catch {
+      console.warn('[App] 无法持久化说明书显示标记');
+    }
+  }, []);
 
   // 监听全屏状态变化（用户按 Esc 退出等）— 仅前端模式需要
   useEffect(() => {
@@ -99,31 +137,25 @@ function AppContent() {
     setRegenerating(false);
     finishGenerating();
   };
-  // ── useMemo 缓存静态导航项，避免每次渲染重建数组 ──
-  const navItems = useMemo(() => [
-    { id: 'story', label: '剧情推进', icon: MessageSquare },
-    { id: 'dispatch', label: '债务调度', icon: Calendar },
-    { id: 'archive', label: '角色图鉴', icon: Users },
-    { id: 'gallery', label: '画廊', icon: Image },
-    { id: 'locations', label: '地点图鉴', icon: MapPin },
-  ] as const, []);
-
   return (
     <div 
-      className="w-full h-dvh flex items-center justify-center overflow-hidden"
+      className={cn(
+        "w-full h-screen flex items-center justify-center overflow-hidden",
+        isPhoneFrame && "phone-frame-outer",
+      )}
       style={{ backgroundColor: '#1a1a1a' }}
     >
       <div 
         className={cn(
           "flex flex-col bg-pop-black overflow-hidden font-sans relative transition-all duration-300 w-full h-full",
+          isMobile && "max-w-107.5 mx-auto",
+          isPhoneFrame && "phone-frame",
         )}
         style={{ filter: isEyeCareMode ? 'sepia(0.2) brightness(0.9) contrast(0.95)' : 'none' }}
       >
         
-        {/* Global HUD — fold button is inside HUD left column */}
+        {/* Global HUD */}
         <HUD
-          isSidebarOpen={isSidebarOpen}
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
           onOpenThinking={() => setIsThinkingOpen(true)}
@@ -131,106 +163,38 @@ function AppContent() {
           onOpenReading={() => setIsReadingOpen(true)}
           onOpenDelete={() => setIsDeleteOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenManual={() => setIsManualOpen(true)}
           onRegenerate={handleRegenerate}
           regenerating={regenerating}
-          isGenerating={isGenerating}
         />
 
-        {/* Sidebar — slides in from left via translate-x */}
-        <nav className={cn(
-          "z-40 flex flex-col justify-start items-stretch bg-pop-black border-r-4 border-white h-full w-64 fixed top-0 left-0 transition-transform duration-300 pt-16",
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}>
-          {/* Close button inside sidebar */}
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="absolute top-3 right-3 text-white hover:text-pop-pink transition-colors z-50"
-          >
-            <X className="w-6 h-6" />
-          </button>
-          {/* Logo */}
-          <div className="flex flex-col items-center justify-center p-6 mb-8 bg-stripes-cyan-pink clip-diagonal mx-4 shadow-pop-pink pop-border">
-            <h1 className="text-3xl font-black italic text-white text-stroke-sm -skew-x-12">DEBT</h1>
-            <h1 className="text-4xl font-black italic text-pop-yellow text-stroke -skew-x-12 mt-1 drop-shadow-pop-pink">CLUB</h1>
-          </div>
-
-          <div className="flex flex-col w-full px-4 gap-4 h-auto items-stretch">
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    if (item.id === 'gallery') {
-                      setGallerySubView('list');
-                      setSelectedGalleryChar(null);
-                    }
-                    setIsSidebarOpen(false);
-                  }}
-                  className={cn(
-                    "relative flex-none flex flex-row items-center justify-start gap-4 p-4 transition-all duration-200 group pop-border overflow-hidden",
-                    isActive ? "bg-pop-yellow text-pop-black clip-diagonal shadow-pop-pink" : "bg-white text-gray-500 hover:bg-gray-100"
-                  )}
-                >
-                  {isActive && <div className="absolute inset-0 bg-halftone opacity-30"></div>}
-                  
-                  <div className="relative z-10 flex items-center justify-center">
-                    <Icon className={cn("w-8 h-8", isActive ? "text-pop-pink" : "group-hover:text-pop-black")} />
-                  </div>
-                  <span className={cn("relative z-10 text-xl font-black tracking-wider whitespace-nowrap", isActive ? "text-pop-black" : "group-hover:text-pop-black")}>
-                    {item.label}
-                  </span>
-                  
-                  {isActive && <motion.div layoutId="nav-indicator" className="absolute top-0 bottom-0 left-0 w-2 bg-pop-pink" />}
-                </button>
-              );
-            })}
-          </div>
-        </nav>
-
         {/* Main Content Area */}
-        <main className="flex-1 relative w-full h-dvh overflow-hidden bg-white">
-          {activeTab === 'story' && <StoryView />}
-          {activeTab === 'dispatch' && <DispatchView />}
-          {activeTab === 'archive' && <ArchiveView />}
-          {activeTab === 'gallery' && gallerySubView === 'list' && (
-            <GalleryView onSelectChar={(name) => {
-              setSelectedGalleryChar(name);
-              setGallerySubView('detail');
-            }} />
-          )}
-          {activeTab === 'gallery' && gallerySubView === 'detail' && selectedGalleryChar && (
-            <GalleryDetailView
-              characterName={selectedGalleryChar}
-              onBack={() => {
-                setGallerySubView('list');
-                setSelectedGalleryChar(null);
-              }}
-            />
-          )}
-          {activeTab === 'locations' && <LocationGalleryView />}
+        <main className="flex-1 relative w-full min-h-0 overflow-hidden bg-white">
+          <StoryView />
         </main>
 
-        {/* 底部输入栏 — 可折叠 */}
+        {/* 底部输入栏 — 手机端始终展开，桌面端可折叠 */}
         <AnimatePresence>
-          {isChatOpen && (
+          {(isChatOpen || isMobile) && (
             <motion.div
-              initial={{ y: '100%', opacity: 0 }}
+              initial={isMobile ? false : { y: '100%', opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: '100%', opacity: 0 }}
+              exit={isMobile ? undefined : { y: '100%', opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 z-50 pb-safe"
+              className={cn(
+                "z-50 pb-safe",
+                isMobile ? "shrink-0 relative" : "fixed bottom-0 left-0 right-0"
+              )}
+              style={isMobile ? { position: 'relative' } : undefined}
             >
-              <ChatBar onClose={() => setIsChatOpen(false)} />
+              <ChatBar onClose={isMobile ? () => {} : () => setIsChatOpen(false)} />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* 折叠态浮动按钮 */}
+        {/* 折叠态浮动按钮 — 手机端不显示 */}
         <AnimatePresence>
-          {!isChatOpen && (
+          {!isChatOpen && !isMobile && (
             <motion.button
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -244,11 +208,20 @@ function AppContent() {
           )}
         </AnimatePresence>
 
-        {/* BGM 播放器 — 浮动在右下角 */}
-        <BgmPlayer />
+        {/* 手机悬浮球 — 可拖动，有消息时震动 */}
+        <PhoneFloatButton />
+
+        {/* 手机界面 — 点击悬浮球展开 */}
+        <PhoneApp />
+
+        {/* 成就解锁通知 — 顶端弹窗 */}
+        <AchievementToast />
 
         {/* 设置面板 */}
         <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+
+        {/* 说明书模态框 */}
+        <ManualModal isOpen={isManualOpen} onClose={handleManualClose} />
 
         {/* 欢迎弹窗 — 每个新聊天文件首次打开时显示 */}
         <WelcomeModal isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen} />
@@ -259,6 +232,7 @@ function AppContent() {
           <VariableViewerModal isOpen={isVariableViewerOpen} onClose={() => setIsVariableViewerOpen(false)} />
           <ReadingModal isOpen={isReadingOpen} onClose={() => setIsReadingOpen(false)} />
           <DeleteFloorsModal isOpen={isDeleteOpen} onClose={() => setIsDeleteOpen(false)} />
+          <MapModal />
         </Suspense>
 
       </div>
@@ -269,9 +243,13 @@ function AppContent() {
 export default function App() {
   return (
     <GameProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <AchievementProvider>
+        <ToastProvider>
+          <PhoneProvider>
+            <AppContent />
+          </PhoneProvider>
+        </ToastProvider>
+      </AchievementProvider>
     </GameProvider>
   );
 }

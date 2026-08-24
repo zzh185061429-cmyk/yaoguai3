@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "ZCOOL XiaoWei", serif;
+  --font-sans: "Noto Sans SC", sans-serif;
+
+  --color-ink-500: #525252;
+  --color-ink-700: #262626;
+  --color-ink-800: #141414;
+  --color-ink-900: #0a0a0a;
+
+  --color-paper-100: #f5f4ef;
+  --color-paper-200: #e6e4dc;
+
+  --color-vermilion-300: #e87060;
+  --color-vermilion-400: #df5645;
+  --color-vermilion-500: #d63d2e;
+  --color-vermilion-600: #b82d20;
+  --color-vermilion-900: #4a1510;
+  --color-vermilion-950: #2e0d09;
+
+  --color-cyan-300: #5ab8b8;
+  --color-cyan-400: #48a8a8;
+  --color-cyan-500: #308f8f;
+  --color-cyan-600: #236b6b;
+  --color-cyan-700: #1a5050;
+  --color-cyan-900: #0d2e2e;
+  --color-cyan-950: #071c1c;
+
+  --color-gold-300: #e8d48a;
+  --color-gold-400: #d6b75a;
+  --color-gold-500: #c29d38;
+  --color-gold-900: #4a3b15;
+  --color-gold-950: #2e2510;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-ink-900 text-paper-100 overflow-hidden select-none;
+  }
+}
+
+/* ── 自定义滚动条 ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(48, 143, 143, 0.3);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(48, 143, 143, 0.5);
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(48, 143, 143, 0.3) transparent;
+}
+
+/* ── 隐藏滚动条 ── */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ── 安全区适配 ── */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* ── 手机模式模拟 ── 仅在宽屏（>470px）时显示手机边框效果 ── */
+@media (min-width: 470px) {
+  .phone-frame-outer {
+    padding: 1rem;
+  }
+  .phone-frame {
+    border-radius: 2rem;
+    box-shadow:
+      0 0 0 3px #262626,
+      0 0 0 4px #0a0a0a,
+      0 20px 60px rgba(0, 0, 0, 0.5);
+  }
+}

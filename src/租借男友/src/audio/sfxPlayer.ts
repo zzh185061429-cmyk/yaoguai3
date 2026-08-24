@@ -31,7 +31,8 @@ export type SfxId =
   | 'nsfwEnter'       // 进入 NSFW
   | 'nsfwExit'        // 退出 NSFW
   | 'send'            // 消息发送
-  | 'error';          // 错误
+  | 'error'           // 错误
+  | 'achievementUnlock'; // 成就解锁 — 金色"叮"声
 
 // ── 角色语音 blip 频率映射（Hz）──
 // 根据角色性格/声线特征分配音高
@@ -355,6 +356,15 @@ class SfxEngine {
       case 'error':
         // 错误 — 低沉短促
         this.playTone(200, 0.15, 'sawtooth', 0.18);
+        break;
+
+      case 'achievementUnlock':
+        // 成就解锁 — 金色"叮"声：上升琶音 + 持续高音光辉感
+        this.playTone(523, 0.08, 'sine', 0.18);
+        this.playTone(659, 0.08, 'sine', 0.18, 0.06);
+        this.playTone(784, 0.12, 'sine', 0.18, 0.12);
+        this.playTone(1047, 0.3, 'sine', 0.14, 0.2);
+        this.playTone(1319, 0.4, 'sine', 0.08, 0.2);
         break;
     }
   }

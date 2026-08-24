@@ -1,0 +1,15 @@
+{
+  "id": "2d6aaa6f-7c71-411e-a7a9-87ec9d48a6af",
+  "enabled": true,
+  "type": "script",
+  "info": "",
+  "button": {
+    "enabled": true,
+    "buttons": []
+  },
+  "data": {},
+  "export_with": {
+    "data": true,
+    "button": true
+  }
+}

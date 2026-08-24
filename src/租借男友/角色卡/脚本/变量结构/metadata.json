@@ -1,0 +1,15 @@
+{
+  "id": "a6f26fca-8753-465e-8f65-aa4d6cacddd8",
+  "enabled": true,
+  "type": "script",
+  "info": "",
+  "button": {
+    "enabled": true,
+    "buttons": []
+  },
+  "data": {},
+  "export_with": {
+    "data": true,
+    "button": true
+  }
+}

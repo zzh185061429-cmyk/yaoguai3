@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  X, Volume2, VolumeX, Music, Mic2, Mic2Off, Settings,
+  X, Volume2, VolumeX, Music, Mic2, MicVocal, Settings,
   Type, Gauge, Keyboard, Zap, CloudRain,
+  Monitor, Smartphone,
 } from "lucide-react";
 import { PopCard } from "./ui/PopCard";
 import { cn } from "../utils";
@@ -10,6 +11,7 @@ import { useGameContext } from "../state/GameContext";
 import { sfx } from "../audio/sfxPlayer";
 import { bgmBridge, useBgmSettings } from "../audio/bgmBridge";
 import { textSettings, useTextSettings } from "../audio/textSettings";
+import { useMobileMode, setMobileMode } from "../hooks";
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -176,8 +178,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   // ── 天气粒子特效开关（从 GameContext 订阅）──
   const { weatherParticlesEnabled, setWeatherParticlesEnabled } = useGameContext();
 
+  // ── 显示模式（从 hooks 订阅：null=自动, true=手机, false=桌面）──
+  const mobileMode = useMobileMode();
+
   // ── Tab 状态 ──
-  const [activeTab, setActiveTab] = useState<"audio" | "text">("audio");
+  const [activeTab, setActiveTab] = useState<"audio" | "text" | "display">("audio");
 
   // ── SFX 回调 ──
   const handleSfxVolumeChange = useCallback((v: number) => {
@@ -285,6 +290,18 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   <Type className="w-3.5 h-3.5" />
                   文字
                 </button>
+                <button
+                  onClick={() => { setActiveTab("display"); sfx.play("tabSwitch"); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs font-black uppercase clip-diagonal pop-border transition-all border-2 border-pop-black",
+                    activeTab === "display"
+                      ? "bg-pop-yellow text-pop-black shadow-[2px_2px_0_#1a1a1a]"
+                      : "bg-white/10 text-white/50 hover:bg-white/20"
+                  )}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  显示
+                </button>
               </div>
 
               {/* 内容区 */}
@@ -325,7 +342,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                           {blipEnabled ? (
                             <Mic2 className="w-4 h-4 text-pop-pink" />
                           ) : (
-                            <Mic2Off className="w-4 h-4 text-gray-500" />
+                            <MicVocal className="w-4 h-4 text-gray-500" />
                           )}
                           <span className="font-black text-sm uppercase tracking-wide">语音 Blip</span>
                         </div>
@@ -362,7 +379,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       </p>
                     </div>
                   </>
-                ) : (
+                ) : activeTab === "text" ? (
                   <>
                     {/* ── 文字速度 ── */}
                     <div className="space-y-2">
@@ -428,6 +445,60 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       </div>
                       <p className="text-[10px] text-white/40 font-bold leading-relaxed">
                         室外场景的雨/雪/雾/闪电粒子动画。室内外均保留天气对背景的调色滤镜，关闭后仅去除粒子动效以节省性能。
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* ── 显示模式 ── */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-4 h-4 text-pop-yellow" />
+                        <span className="font-black text-sm uppercase tracking-wide">显示模式</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {/* 自动 */}
+                        <button
+                          onClick={() => { setMobileMode(null); sfx.play("confirm"); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 clip-diagonal pop-border transition-all border-2 border-pop-black",
+                            mobileMode === null
+                              ? "bg-pop-yellow text-pop-black shadow-[2px_2px_0_#1a1a1a]"
+                              : "bg-white/10 text-white/50 hover:bg-white/20"
+                          )}
+                        >
+                          <Zap className="w-5 h-5" />
+                          <span className="text-xs font-black uppercase">自动</span>
+                        </button>
+                        {/* 桌面 */}
+                        <button
+                          onClick={() => { setMobileMode(false); sfx.play("confirm"); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 clip-diagonal pop-border transition-all border-2 border-pop-black",
+                            mobileMode === false
+                              ? "bg-pop-cyan text-pop-black shadow-[2px_2px_0_#1a1a1a]"
+                              : "bg-white/10 text-white/50 hover:bg-white/20"
+                          )}
+                        >
+                          <Monitor className="w-5 h-5" />
+                          <span className="text-xs font-black uppercase">桌面</span>
+                        </button>
+                        {/* 手机 */}
+                        <button
+                          onClick={() => { setMobileMode(true); sfx.play("confirm"); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 clip-diagonal pop-border transition-all border-2 border-pop-black",
+                            mobileMode === true
+                              ? "bg-pop-pink text-white shadow-[2px_2px_0_#1a1a1a]"
+                              : "bg-white/10 text-white/50 hover:bg-white/20"
+                          )}
+                        >
+                          <Smartphone className="w-5 h-5" />
+                          <span className="text-xs font-black uppercase">手机</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-white/40 font-bold leading-relaxed">
+                        手机模式模拟竖屏手机体验（居中窄屏带手机边框），桌面模式使用宽屏布局，自动模式根据屏幕宽度智能切换。
                       </p>
                     </div>
                   </>

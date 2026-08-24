@@ -1,7 +1,0 @@
-{
-  "id": "e3f5a8b1-6c2d-4a9e-8f7b-3d1c5e2a4f9c",
-  "name": "悬浮球输入框-实时修改",
-  "content": "import 'http://localhost:5500/dist/悬浮球输入框/index.js'",
-  "info": "",
-  "buttons": []
-}

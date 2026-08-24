@@ -8,6 +8,7 @@
   --color-pop-cyan: #00e5ff;
   --color-pop-yellow: #ffcc00;
   --color-pop-black: #1a1a1a;
+  --color-pop-green: #39ff14;
   
   --shadow-pop: 4px 4px 0px #1a1a1a;
   --shadow-pop-lg: 8px 8px 0px #1a1a1a;
@@ -32,6 +33,21 @@
     background-size: 16px 16px;
   }
 
+  .bg-halftone-white {
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.4) 20%, transparent 20%);
+    background-size: 10px 10px;
+  }
+
+  .bg-stripes-subtle {
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 10px,
+      rgba(0,0,0,0.1) 10px,
+      rgba(0,0,0,0.1) 20px
+    );
+  }
+
   .bg-stripes {
     background-image: repeating-linear-gradient(
       -45deg,
@@ -54,6 +70,10 @@
 
   .clip-diagonal {
     clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  }
+
+  .clip-diagonal-right {
+    clip-path: polygon(0 0, 100% 10px, 100% calc(100% - 10px), 0 100%);
   }
   
   .text-stroke {
@@ -147,5 +167,19 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* 手机模式模拟 — 仅在宽屏（>470px）时显示手机边框效果 */
+@media (min-width: 470px) {
+  .phone-frame-outer {
+    padding: 1rem;
+  }
+  .phone-frame {
+    border-radius: 2rem;
+    box-shadow:
+      0 0 0 3px #2a2a2a,
+      0 0 0 4px #0a0a0a,
+      0 20px 60px rgba(0, 0, 0, 0.5);
   }
 }

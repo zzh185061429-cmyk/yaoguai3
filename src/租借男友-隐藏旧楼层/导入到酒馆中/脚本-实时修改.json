@@ -1,7 +1,0 @@
-{
-  "id": "a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-  "name": "租借男友-隐藏旧楼层-实时修改",
-  "content": "import 'http://localhost:5500/dist/租借男友-隐藏旧楼层/index.js'",
-  "info": "",
-  "buttons": []
-}

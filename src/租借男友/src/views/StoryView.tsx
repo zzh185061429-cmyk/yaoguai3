@@ -2,16 +2,19 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "motion/react";
 import { PopCard } from "../components/ui/PopCard";
 import { PopButton } from "../components/ui/PopButton";
-import { History, ChevronRight, ChevronLeft, Play, Pause, Zap, FastForward, Heart, SkipForward, SkipBack, ChevronUp, ChevronDown, X } from "lucide-react";
+import { History, ChevronRight, ChevronLeft, Play, Pause, Zap, FastForward, ChevronUp, ChevronDown, X, Radio } from "lucide-react";
 import { useToast } from "../components/ToastProvider";
 import { useGameContext } from "../state/GameContext";
-import { parseScriptContent, parseOptions, ScriptLine } from "./scriptParser";
+import { usePhoneContext } from "../state/PhoneContext";
+import { parseScriptContent, parseOptions, parseParallelEvents, ScriptLine, ParallelEvent } from "./scriptParser";
+import { useAchievementContext } from "../state/AchievementContext";
 import { getAssistantFloors } from "../utils/floorNav";
-import { getNsfwData, hasNsfwData, canTriggerNsfw, CHARACTER_CHIBIS } from "../data/characterData";
+import { getCharacterByTriggerLocation, CHARACTER_CHIBIS } from "../data/characterData";
 import { getLocationImage, getLocationImageData } from "../data/locationImages";
 import { isOutdoorLocation } from "../data/scheduleData";
 import { WeatherOverlay } from "../components/WeatherOverlay";
 import { cn } from "../utils";
+import { useIsMobile } from "../hooks";
 import { sfx } from "../audio/sfxPlayer";
 import { textSettings, useTextSettings, getTextDelay } from "../audio/textSettings";
 
@@ -106,21 +109,34 @@ export function StoryView() {
   const [options, setOptions] = useState<string[]>([]);
   const [optionsDismissed, setOptionsDismissed] = useState(false);
 
+  // ── 平行事件状态 ──
+  const [parallelEvents, setParallelEvents] = useState<ParallelEvent[]>([]);
+  const [showParallelEvents, setShowParallelEvents] = useState(true);
+
   // 使用 ref 跟踪跳过状态，避免触发 effect 重新执行
   const skipTypingRef = useRef(false);
   // 跟踪上一次的场景 location，用于检测场景切换并清空立绘
   const prevLocationKeyRef = useRef<string | null>(null);
+
+  // ── 快进状态（Ctrl 按住时）──
+  const [isFastForwarding, setIsFastForwarding] = useState(false);
+  const isFastForwardingRef = useRef(false);
+  isFastForwardingRef.current = isFastForwarding;
 
   const { showToast } = useToast();
   const {
     viewingFloorId, setViewingFloor, lastAssistantFloorId,
     isGenerating, generatingFloorId,
     currentLocation, gameTime,
-    isNsfwMode, nsfwStageIndex, nsfwCharacter,
-    enterNsfwMode, exitNsfwMode, nextNsfwStage, prevNsfwStage,
+    nsfwCgUrl, triggerNsfwPhase, resetNsfw,
     setScriptCharacterLocations, setPendingMessage,
     playerName,
   } = useGameContext();
+
+  const { isPhoneOpen } = usePhoneContext();
+  const { unlock: unlockAchievement } = useAchievementContext();
+  const isMobile = useIsMobile();
+  const touchStartRef = useRef<number | null>(null);
 
   // 读取指定楼层（或最新楼层）消息文本，解析 <content> 标签
   const targetFloorId = viewingFloorId ?? lastAssistantFloorId;
@@ -158,16 +174,6 @@ export function StoryView() {
   const showOptions = options.length > 0 && !optionsDismissed &&
     currentIndex >= script.length - 1 && !isTyping;
 
-  // ── useMemo 缓存派生值，避免每次渲染都重新计算 ──
-  // 获取当前 NSFW 阶段的背景图
-  const nsfwBackgroundUrl = useMemo(() => {
-    if (!isNsfwMode || !nsfwCharacter) return null;
-    const data = getNsfwData(nsfwCharacter);
-    if (!data) return null;
-    const stage = data.stages[nsfwStageIndex];
-    return stage?.imageUrl || null;
-  }, [isNsfwMode, nsfwCharacter, nsfwStageIndex]);
-
   // 当前场景的地点信息（用于判断NSFW触发条件）
   const sceneLocation = useMemo(() => {
     const line = script[currentIndex];
@@ -177,55 +183,23 @@ export function StoryView() {
     return { parent: currentLocation, spot: undefined };
   }, [script, currentIndex, currentLocation]);
 
-  // 当前活跃角色（正在说话的角色，立绘正在显示）
-  const activeCharacter = useMemo(
-    () => sceneCharacters.find(c => c.isActive),
-    [sceneCharacters]
-  );
-
-  // 判断是否可以显示 NSFW 心型按钮
-  const canShowNsfwButton = useMemo(() => {
-    if (isNsfwMode) return true;
-    if (!activeCharacter) return false;
-    if (!hasNsfwData(activeCharacter.speaker)) return false;
-    if (!canTriggerNsfw(activeCharacter.speaker, sceneLocation.parent, sceneLocation.spot)) return false;
-    return true;
-  }, [isNsfwMode, activeCharacter, sceneLocation]);
-
-  // 获取当前 NSFW 阶段信息
-  const nsfwData = useMemo(
-    () => nsfwCharacter ? getNsfwData(nsfwCharacter) : null,
-    [nsfwCharacter]
-  );
-  const currentStage = nsfwData?.stages[nsfwStageIndex];
-  const hasNextStage = nsfwData ? nsfwStageIndex < nsfwData.stages.length - 1 : false;
-  const hasPrevStage = nsfwStageIndex > 0;
-
   // ── useCallback 缓存事件处理函数，避免子组件不必要的重渲染 ──
-  const handleNsfwClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isNsfwMode) {
-      sfx.play('nsfwExit');
-      exitNsfwMode();
-      showToast('已退出特殊模式', 'normal');
-      return;
-    }
-    if (!activeCharacter) return;
-    sfx.play('nsfwEnter');
-    enterNsfwMode(activeCharacter.speaker);
-    showToast(`已进入 ${activeCharacter.speaker} 的特殊模式，点击心型按钮可退出`, 'normal');
-  }, [isNsfwMode, activeCharacter, exitNsfwMode, enterNsfwMode, showToast]);
 
   useEffect(() => {
     if (targetFloorId == null) return;
+    // 楼层切换时重置 NSFW 状态
+    resetNsfw();
     try {
       const msg = getChatMessages(targetFloorId)[0];
       if (msg) {
         const parsed = parseScriptContent(msg.message, playerName);
         const parsedOptions = parseOptions(msg.message);
+        const parsedParallelEvents = parseParallelEvents(msg.message);
         setScript(parsed);
         setOptions(parsedOptions);
         setOptionsDismissed(false);
+        setParallelEvents(parsedParallelEvents);
+        setShowParallelEvents(true);
         setCurrentIndex(0);
         setSceneCharacters([]); // 重置场景
         prevLocationKeyRef.current = null; // 重置场景跟踪
@@ -271,13 +245,37 @@ export function StoryView() {
 
   const currentLine = script[currentIndex];
 
+  // ── 成就触发：当玩家推进到带有 achievementTriggers 的行时触发解锁 ──
+  useEffect(() => {
+    if (!currentLine?.achievementTriggers) return;
+    for (const rawId of currentLine.achievementTriggers) {
+      unlockAchievement(rawId, targetFloorId ?? undefined);
+    }
+  }, [currentLine, targetFloorId, unlockAchievement]);
+
+  // ── NSFW 阶段检测：当 currentLine 的 nsfwPhase 变化时自动触发 CG ──
+  // 优先使用标签中指定的角色名 [nsfw:角色名:阶段名]，回退到地点匹配
+  const nsfwChar = useMemo(() => {
+    if (!currentLine?.nsfwPhase) return null;
+    if (currentLine.nsfwCharacter) return currentLine.nsfwCharacter;
+    return getCharacterByTriggerLocation(sceneLocation.parent, sceneLocation.spot);
+  }, [currentLine?.nsfwPhase, currentLine?.nsfwCharacter, sceneLocation]);
+
+  useEffect(() => {
+    if (currentLine?.nsfwPhase && nsfwChar) {
+      if (currentLine.nsfwPhase === '开始') {
+        sfx.play('nsfwEnter');
+      }
+      triggerNsfwPhase(currentLine.nsfwPhase, nsfwChar);
+    }
+  }, [currentLine?.nsfwPhase, nsfwChar, triggerNsfwPhase]);
+
   // ── 从当前阅读进度中提取角色位置，覆盖日程表 ──
   // 遍历 0→currentIndex，每个角色最后出现的场景位置即为当前位置
+  // 使用替换而非合并：只保留当前楼层出场的角色位置
+  // 未出场角色不在 charLocs 中，会自动回退到日程表查询
   useEffect(() => {
-    if (script.length === 0) {
-      setScriptCharacterLocations({});
-      return;
-    }
+    if (script.length === 0) return;
     const charLocs: Record<string, string> = {};
     const endIdx = Math.min(currentIndex, script.length - 1);
     for (let i = 0; i <= endIdx; i++) {
@@ -294,7 +292,12 @@ export function StoryView() {
         }
       }
     }
-    setScriptCharacterLocations(charLocs);
+    // 替换：只保留当前楼层出场的角色位置
+    // 未出场的角色不在 charLocs 中 → getCharacterLocation 会回退到日程表
+    // 如果当前楼层还没解析到任何角色位置（如纯旁白），保留之前的状态
+    if (Object.keys(charLocs).length > 0) {
+      setScriptCharacterLocations(charLocs);
+    }
   }, [script, currentIndex, setScriptCharacterLocations]);
 
   // ── 更新场景角色（当 currentLine 变化时） ──
@@ -381,8 +384,8 @@ export function StoryView() {
     skipTypingRef.current = false;
 
     if (currentLine && currentIndex < script.length) {
-      // 瞬间显示模式：跳过打字机动画
-      if (textSpeed === 0) {
+      // 瞬间显示模式或快进模式：跳过打字机动画
+      if (textSpeed === 0 || isFastForwardingRef.current) {
         setDisplayedText(currentLine.text);
         setIsTyping(false);
         return;
@@ -450,6 +453,176 @@ export function StoryView() {
     return undefined;
   }, [isAutoMode, isTyping, currentIndex, script.length, currentLine, autoWaitMultiplier]);
 
+  // 快进模式（Ctrl 按住时自动翻页）
+  useEffect(() => {
+    if (isFastForwarding && !isTyping && !showOptions && !showBacklog && !isTextBoxCollapsed) {
+      const timer = setTimeout(() => {
+        if (currentIndex < script.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+        } else if (canNextFloor && navIndex >= 0) {
+          sfx.play('pageTurn');
+          if (navIndex + 1 === availableFloors.length - 1) {
+            setViewingFloor(null);
+          } else {
+            setViewingFloor(availableFloors[navIndex + 1]);
+          }
+        } else {
+          // 无更多内容，停止快进
+          setIsFastForwarding(false);
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [isFastForwarding, isTyping, showOptions, showBacklog, isTextBoxCollapsed, currentIndex, script.length, canNextFloor, navIndex, availableFloors, setViewingFloor]);
+
+  // ── 键盘映射（galgame 风格：D/→ 前进，A/← 后退，Ctrl 快进）──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 不干扰输入框
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      // 选项面板/历史记录/文本框收起时不响应
+      if (showOptions || showBacklog || isTextBoxCollapsed) return;
+      // 有遮罩（小手机/模态框等）打开时不响应
+      if (isPhoneOpen || (window as any).__anyOverlayOpen__) return;
+
+      // Ctrl = 快进
+      if (e.key === 'Control') {
+        if (!isFastForwarding) {
+          e.preventDefault();
+          setIsFastForwarding(true);
+          // 立即完成当前打字
+          if (isTyping && currentLine) {
+            skipTypingRef.current = true;
+            setDisplayedText(currentLine.text);
+            setIsTyping(false);
+          }
+        }
+        return;
+      }
+
+      // D / → = 前进（不响应按键重复）
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') {
+        if (e.repeat) return;
+        e.preventDefault();
+        setIsFastForwarding(false); // 手动操作时停止快进
+        if (isTyping && currentLine) {
+          // 第一次按：完成打字
+          skipTypingRef.current = true;
+          setDisplayedText(currentLine.text);
+          setIsTyping(false);
+        } else if (currentIndex < script.length - 1) {
+          // 下一句
+          sfx.play('click');
+          setCurrentIndex(prev => prev + 1);
+        } else if (canNextFloor && navIndex >= 0) {
+          // 本楼层最后一句：下一楼层
+          sfx.play('pageTurn');
+          if (navIndex + 1 === availableFloors.length - 1) {
+            setViewingFloor(null);
+          } else {
+            setViewingFloor(availableFloors[navIndex + 1]);
+          }
+        }
+        return;
+      }
+
+      // A / ← = 后退（不响应按键重复）
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {
+        if (e.repeat) return;
+        e.preventDefault();
+        setIsFastForwarding(false); // 手动操作时停止快进
+        if (currentIndex > 0) {
+          // 上一句
+          setCurrentIndex(prev => prev - 1);
+        } else if (canPrevFloor && navIndex > 0) {
+          // 本楼层第一句：上一楼层
+          sfx.play('pageTurn');
+          setViewingFloor(availableFloors[navIndex - 1]);
+        }
+        return;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') {
+        setIsFastForwarding(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [
+    showOptions, showBacklog, isTextBoxCollapsed, isFastForwarding, isPhoneOpen,
+    isTyping, currentLine, currentIndex, script.length,
+    canNextFloor, canPrevFloor, navIndex, availableFloors, setViewingFloor,
+  ]);
+
+// ── 鼠标滚轮翻页（同方向键逻辑）──
+const wheelLockRef = useRef(false);
+useEffect(() => {
+const handleWheel = (e: WheelEvent) => {
+// 不干扰可滚动区域内的滚轮
+const target = e.target as HTMLElement;
+if (target.closest('.overflow-y-auto') || target.closest('.overflow-auto')) return;
+// 选项面板/历史记录/文本框收起时不响应
+if (showOptions || showBacklog || isTextBoxCollapsed) return;
+// 非全屏时不响应滚轮翻页
+const isFs = typeof (window as any).__TAVERN_SCRIPT_MODE__ !== 'undefined'
+  ? !!(window as any).__isFullscreen__
+  : !!document.fullscreenElement;
+if (!isFs) return;
+// 有遮罩（小手机/模态框等）打开时不响应
+if (isPhoneOpen || (window as any).__anyOverlayOpen__) return;
+
+      e.preventDefault();
+      if (wheelLockRef.current) return;
+      wheelLockRef.current = true;
+      setTimeout(() => { wheelLockRef.current = false; }, 200);
+
+      setIsFastForwarding(false);
+
+      if (e.deltaY > 0) {
+        // 向下滚 = 前进（同 D/→）
+        if (isTyping && currentLine) {
+          skipTypingRef.current = true;
+          setDisplayedText(currentLine.text);
+          setIsTyping(false);
+        } else if (currentIndex < script.length - 1) {
+          sfx.play('click');
+          setCurrentIndex(prev => prev + 1);
+        } else if (canNextFloor && navIndex >= 0) {
+          sfx.play('pageTurn');
+          if (navIndex + 1 === availableFloors.length - 1) {
+            setViewingFloor(null);
+          } else {
+            setViewingFloor(availableFloors[navIndex + 1]);
+          }
+        }
+      } else if (e.deltaY < 0) {
+        // 向上滚 = 后退（同 A/←）
+        if (currentIndex > 0) {
+          setCurrentIndex(prev => prev - 1);
+        } else if (canPrevFloor && navIndex > 0) {
+          sfx.play('pageTurn');
+          setViewingFloor(availableFloors[navIndex - 1]);
+        }
+      }
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, [
+    showOptions, showBacklog, isTextBoxCollapsed, isPhoneOpen,
+    isTyping, currentLine, currentIndex, script.length,
+    canNextFloor, canPrevFloor, navIndex, availableFloors, setViewingFloor,
+  ]);
+
   const handleNext = useCallback(() => {
     if (!currentLine) return;
     if (isTyping) {
@@ -508,12 +681,12 @@ export function StoryView() {
 
   // 场景背景图（从当前行的场景标签获取，根据游戏时间自动选择白日/夜晚）
   const sceneBackgroundUrl = useMemo(() => {
-    if (isNsfwMode) return null;
+    if (nsfwCgUrl) return null;
     if (!currentLine?.location) return null;
     const { parent, spot } = currentLine.location;
     const spotName = spot || parent;
     return getLocationImage(parent, spotName, gameTime, playerName);
-  }, [isNsfwMode, currentLine, gameTime, playerName]);
+  }, [nsfwCgUrl, currentLine, gameTime, playerName]);
 
   // 无背景图时的文字提示
   const displayLocationName = useMemo(() => {
@@ -532,6 +705,447 @@ export function StoryView() {
     );
   }
 
+  // ── 手机端 GBF 式布局：上半视觉区(55%) + 下半操作区(45%) ──
+  if (isMobile) {
+    return (
+      <div className="flex flex-col w-full h-full overflow-hidden font-sans contain-strict">
+
+        {/* ════ 上半视觉区 ════ */}
+        <div
+          className="relative h-[60%] overflow-hidden shrink-0"
+          onTouchStart={(e) => { touchStartRef.current = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            if (touchStartRef.current == null) return;
+            const deltaX = e.changedTouches[0].clientX - touchStartRef.current;
+            const threshold = 50;
+            touchStartRef.current = null;
+            if (isPhoneOpen || (window as any).__anyOverlayOpen__) return;
+            if (showOptions || showBacklog || isTextBoxCollapsed) return;
+
+            if (deltaX < -threshold) {
+              // 左滑 = 前进
+              if (isTyping && currentLine) {
+                skipTypingRef.current = true;
+                setDisplayedText(currentLine.text);
+                setIsTyping(false);
+              } else if (currentIndex < script.length - 1) {
+                sfx.play('click');
+                setCurrentIndex(prev => prev + 1);
+              } else if (canNextFloor && navIndex >= 0) {
+                sfx.play('pageTurn');
+                if (navIndex + 1 === availableFloors.length - 1) {
+                  setViewingFloor(null);
+                } else {
+                  setViewingFloor(availableFloors[navIndex + 1]);
+                }
+              }
+            } else if (deltaX > threshold) {
+              // 右滑 = 后退
+              if (currentIndex > 0) {
+                sfx.play('click');
+                setCurrentIndex(prev => prev - 1);
+              } else if (canPrevFloor && navIndex > 0) {
+                sfx.play('pageTurn');
+                setViewingFloor(availableFloors[navIndex - 1]);
+              }
+            }
+          }}
+        >
+          {/* 背景层 — CG 用 contain+模糊填充，场景图用 cover */}
+          <div className="absolute inset-0 z-0">
+            {(() => {
+              // NSFW CG：contain + 模糊背景填充
+              if (nsfwCgUrl) {
+                return (
+                  <div className="absolute inset-0 bg-pop-black overflow-hidden">
+                    {/* CG 完整显示 */}
+                    <AnimatePresence mode="sync">
+                      <motion.img
+                        key={nsfwCgUrl}
+                        src={nsfwCgUrl}
+                        alt="NSFW CG"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.4 }}
+                        className="absolute inset-0 w-full h-full object-contain"
+                        decoding="async"
+                      />
+                    </AnimatePresence>
+                  </div>
+                );
+              }
+              // 场景背景图 — contain + 模糊背景填充（和 CG 一样，不裁剪）
+              if (sceneBackgroundUrl) {
+                return (
+                  <div className="absolute inset-0 overflow-hidden">
+                    {/* 场景背景图铺满 */}
+                    <AnimatePresence mode="sync">
+                      <motion.img
+                        key={sceneBackgroundUrl}
+                        src={sceneBackgroundUrl}
+                        alt="场景背景"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.8, ease: "easeInOut" }}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        decoding="async"
+                      />
+                    </AnimatePresence>
+                  </div>
+                );
+              }
+              // 无背景图
+              return (
+                <div className="w-full h-full bg-pop-black flex items-center justify-center">
+                  <div className="text-white/30 text-xl font-black">
+                    {displayLocationName}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* 天气叠层 */}
+          <WeatherOverlay gameTime={gameTime} isOutdoor={(() => {
+            if (!currentLine?.location) return false;
+            const spotName = currentLine.location.spot || currentLine.location.parent;
+            return isOutdoorLocation(spotName) || isOutdoorLocation(currentLine.location.parent);
+          })()} />
+
+          {/* 立绘层 — 限制在上半区内 */}
+          <div className="absolute inset-0 z-15 pointer-events-none overflow-hidden">
+            <AnimatePresence mode="popLayout">
+              {!nsfwCgUrl && sceneCharacters.map((char) => (
+                <motion.div
+                  key={char.speaker}
+                  className={cn(
+                    "absolute bottom-0 w-full h-full flex items-end justify-center transition-all duration-300 pointer-events-none",
+                    // 多角色时 center 退化为 left，避免与 right 角色重叠
+                    sceneCharacters.length >= 2 && char.position === 'center' && "justify-start pl-[3%]",
+                    sceneCharacters.length < 2 && char.position === 'center' && "justify-center",
+                    char.position === 'left' && "justify-start pl-[3%]",
+                    char.position === 'right' && "justify-end pr-[3%]",
+                  )}
+                  style={{
+                    filter: char.isActive ? 'none' : 'brightness(0.55) grayscale(0.35)',
+                    zIndex: char.isActive ? 16 : 15,
+                    transform: char.isActive ? 'scale(1)' : 'scale(0.96)',
+                    transition: 'filter 0.3s ease, transform 0.3s ease',
+                  }}
+                  {...getTransitionConfig(char.emotion)}
+                >
+                  {char.sprite && (
+                    <img
+                      src={char.sprite}
+                      alt={`${char.speaker}-${char.emotion}`}
+                      className={cn(
+                        "max-h-[80%] object-contain object-bottom",
+                        sceneCharacters.length <= 1 ? "max-w-full" : sceneCharacters.length === 2 ? "max-w-[45%]" : "max-w-[31%]",
+                      )}
+                      style={{
+                        maskImage: 'linear-gradient(to bottom, black 75%, transparent 100%)',
+                        WebkitMaskImage: 'linear-gradient(to bottom, black 75%, transparent 100%)',
+                        filter: 'drop-shadow(0 0 20px rgba(0,0,0,0.5))',
+                      }}
+                      loading="eager"
+                    />
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
+          {/* 情绪特效 */}
+          <div className="absolute inset-0 z-18 pointer-events-none">
+            {screenEffect?.shake && (
+              <motion.div
+                animate={{ x: [0, -4, 4, -4, 4, 0] }}
+                transition={{ duration: 0.25 }}
+                className="w-full h-full"
+              />
+            )}
+            {screenEffect?.vignette && (
+              <div className="absolute inset-0" style={{ boxShadow: `inset 0 0 200px ${screenEffect.vignette}` }} />
+            )}
+            {screenEffect?.flashColor && (
+              <motion.div
+                initial={{ opacity: 1 }}
+                animate={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="absolute inset-0"
+                style={{ backgroundColor: screenEffect.flashColor }}
+              />
+            )}
+          </div>
+
+          {/* 平行事件面板 */}
+          <AnimatePresence mode="wait">
+            {parallelEvents.length > 0 && showParallelEvents && (
+              <motion.div
+                key="pe-mobile-expanded"
+                initial={{ x: -200, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -200, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="absolute top-2 left-2 z-30 max-w-60 pointer-events-auto"
+              >
+                <div className="bg-pop-black/90 backdrop-blur-md border-2 border-pop-cyan rounded-lg shadow-[3px_3px_0_rgba(0,229,255,0.3)] overflow-hidden">
+                  <div className="flex items-center justify-between bg-pop-cyan/90 px-2 py-1 border-b-2 border-pop-black">
+                    <div className="flex items-center gap-1">
+                      <Radio className="w-3.5 h-3.5 text-pop-black" />
+                      <span className="font-black text-xs text-pop-black tracking-tight">平行事件</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowParallelEvents(false); }}
+                      className="text-pop-black hover:scale-110 active:scale-90 transition-transform"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="p-2 space-y-1.5">
+                    {parallelEvents.map((evt, i) => (
+                      <div key={i} className="border-l-2 border-pop-pink pl-1.5">
+                        <div className="text-pop-yellow text-xs font-black leading-tight mb-0.5">{evt.location}</div>
+                        <div className="text-white/80 text-xs leading-snug">{evt.event}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            {parallelEvents.length > 0 && !showParallelEvents && (
+              <motion.button
+                key="pe-mobile-collapsed"
+                initial={{ x: -50, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: -50, opacity: 0 }}
+                onClick={(e) => { e.stopPropagation(); setShowParallelEvents(true); }}
+                className="absolute top-2 left-2 z-30 bg-pop-black/90 border-2 border-pop-cyan p-1 rounded-lg hover:scale-110 active:scale-90 transition-transform pointer-events-auto"
+                title="展开平行事件"
+              >
+                <Radio className="w-3.5 h-3.5 text-pop-cyan" />
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          {/* 视觉区底部渐变 — 与操作区自然过渡 */}
+          <div className="absolute bottom-0 left-0 right-0 h-6 bg-linear-to-t from-pop-black to-transparent z-19 pointer-events-none" />
+        </div>
+
+        {/* ════ 下半操作区 ════ */}
+        <div className="flex-1 bg-pop-black flex flex-col relative overflow-hidden min-h-0">
+          {/* 文字区 — 点击翻页 */}
+          <div
+            className="flex-1 flex flex-col px-3 pt-2 pb-1 cursor-pointer min-h-0"
+            onClick={() => {
+              handleNext();
+            }}
+          >
+            {/* 名字标签 */}
+            <AnimatePresence mode="wait">
+              {currentLine.type !== 'narrator' && (
+                <motion.div
+                  key={currentLine.speaker}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  className="flex items-center gap-2 mb-1 shrink-0"
+                >
+                  {currentLine.avatar && (
+                    <div className={`w-9 h-9 bg-white pop-border border-4 flex items-center justify-center overflow-hidden clip-diagonal relative transform -skew-x-6 ${currentLine.color === 'bg-white' ? 'border-pop-yellow' : 'border-pop-black'}`}>
+                      <img src={currentLine.avatar} alt="avatar" className="w-full h-full object-cover object-top scale-110" />
+                    </div>
+                  )}
+                  <div className={`px-3 py-0.5 pop-border border-4 text-xl font-black italic -skew-x-6 text-pop-black shadow-[2px_2px_0_#fff] ${currentLine.color === 'bg-white' ? 'bg-pop-yellow' : currentLine.color}`}>
+                    {displayName(currentLine.speaker!, playerName)}
+                    {currentLine.emotion && currentLine.emotion !== '默认' && (
+                      <span className="ml-1 text-xs font-normal opacity-70">[{currentLine.emotion}]</span>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* 文字内容 — 可滚动 */}
+            <div
+              className={`flex-1 overflow-y-auto hide-scrollbar text-xl font-bold leading-relaxed tracking-wide min-h-0 ${currentLine.type === 'thought' ? 'text-blue-400' : 'text-white'}`}
+            >
+              {displayedText}
+              {isTyping && <span className={`inline-block w-2 h-4 animate-pulse ml-1 align-middle ${currentLine.type === 'thought' ? 'bg-blue-400' : 'bg-white'}`} />}
+            </div>
+          </div>
+
+          {/* 按钮组 — 横向可滚动 */}
+          <div className="flex items-center gap-1 px-2 pb-2 pt-1 shrink-0 overflow-x-auto hide-scrollbar">
+            <PopButton variant="ghost" size="sm" className="gap-1 bg-white/10 text-white hover:bg-white/20 pop-border border-white shadow-none shrink-0" onClick={(e) => { e.stopPropagation(); setShowBacklog(true); }}>
+              <History className="w-3.5 h-3.5" />
+            </PopButton>
+            <PopButton variant="ghost" size="sm" className="gap-1 bg-white/10 text-white hover:bg-white/20 pop-border border-white shadow-none shrink-0" onClick={handlePrev} disabled={currentIndex === 0}>
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </PopButton>
+            <PopButton
+              variant="ghost"
+              size="sm"
+              className={`gap-1 pop-border border-white shadow-none shrink-0 ${isAutoMode ? 'bg-pop-pink text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
+              onClick={(e) => { e.stopPropagation(); setIsAutoMode(prev => !prev); }}
+            >
+              {isAutoMode ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            </PopButton>
+            <PopButton
+              variant="ghost"
+              size="sm"
+              className="gap-1 bg-white/10 text-white hover:bg-white/20 pop-border border-white shadow-none shrink-0"
+              onClick={(e) => { e.stopPropagation(); const next = textSpeed >= 3 ? 1 : textSpeed + 1; textSettings.setTextSpeed(next); }}
+              title={`速度: ${textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}`}
+            >
+              {textSpeed >= 3 ? <Zap className="w-3.5 h-3.5 text-pop-yellow" /> : <FastForward className="w-3.5 h-3.5" />}
+            </PopButton>
+
+            {/* 楼层翻页 — 靠右 */}
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <PopButton
+                variant="ghost"
+                size="sm"
+                className={cn("gap-1 pop-border border-white shadow-none shrink-0", canPrevFloor ? "bg-white/10 text-white hover:bg-white/20" : "bg-gray-600 text-gray-400 cursor-not-allowed")}
+                onClick={handlePrevFloor}
+                disabled={!canPrevFloor}
+              >
+                <ChevronUp className="w-3.5 h-3.5" />
+              </PopButton>
+              <PopButton
+                variant="ghost"
+                size="sm"
+                className={cn("gap-1 pop-border border-white shadow-none shrink-0", canNextFloor ? "bg-white/10 text-white hover:bg-white/20" : "bg-gray-600 text-gray-400 cursor-not-allowed")}
+                onClick={handleNextFloor}
+                disabled={!canNextFloor}
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+              </PopButton>
+              {!isTyping && (
+                <motion.div animate={{ x: [0, 6, 0] }} transition={{ repeat: Infinity, duration: 1 }} className="shrink-0">
+                  <ChevronRight className="w-6 h-6 text-pop-yellow" />
+                </motion.div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 选项面板 — 全屏覆盖 */}
+        <AnimatePresence>
+          {showOptions && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="absolute inset-0 z-35 bg-pop-black/85 backdrop-blur-md flex items-center justify-center p-4"
+            >
+              <div className="absolute inset-0 bg-halftone opacity-20 pointer-events-none" />
+              <button
+                onClick={() => setOptionsDismissed(true)}
+                className="absolute top-4 right-4 z-40 p-2 bg-pop-yellow text-pop-black pop-border clip-diagonal hover:scale-110 transition-transform shadow-pop-pink font-black"
+                title="关闭选项"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <motion.div
+                initial={{ scale: 0.85, opacity: 0, y: 30 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.85, opacity: 0, y: 30 }}
+                transition={{ type: "spring", damping: 20, stiffness: 200, delay: 0.1 }}
+                className="w-full max-w-2xl flex flex-col gap-2 relative z-10"
+              >
+                {options.map((option, i) => {
+                  const colorScheme = i % 3 === 0
+                    ? "bg-pop-pink text-white shadow-pop-cyan"
+                    : i % 3 === 1
+                      ? "bg-pop-cyan text-pop-black shadow-pop-pink"
+                      : "bg-pop-yellow text-pop-black shadow-pop-pink";
+                  return (
+                    <motion.button
+                      key={i}
+                      initial={{ opacity: 0, x: -40 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.15 + i * 0.08, type: "spring", damping: 18 }}
+                      onClick={() => handleSelectOption(option)}
+                      className={cn(
+                        "flex items-center gap-3 p-3 pop-border clip-diagonal font-black text-left",
+                        "hover:scale-[1.03] active:translate-x-1 active:translate-y-1 active:shadow-none",
+                        "transition-all duration-150 group relative overflow-hidden",
+                        colorScheme
+                      )}
+                    >
+                      <div className="absolute inset-0 bg-halftone opacity-10 pointer-events-none" />
+                      {optionChibis[i] && (
+                        <div className="relative z-10 shrink-0 w-12 h-12 flex items-center justify-center">
+                          <img
+                            src={optionChibis[i]}
+                            alt="chibi"
+                            className="w-full h-full object-contain group-hover:scale-125 group-hover:-rotate-6 transition-transform drop-shadow-[2px_2px_0_rgba(0,0,0,0.3)]"
+                            loading="eager"
+                          />
+                        </div>
+                      )}
+                      <span className="relative z-10 flex-1 text-sm leading-snug">
+                        {option}
+                      </span>
+                      <ChevronRight className="relative z-10 w-5 h-5 shrink-0 group-hover:translate-x-2 transition-transform" />
+                    </motion.button>
+                  );
+                })}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 历史记录侧边栏 — 全屏覆盖 */}
+        <AnimatePresence>
+          {showBacklog && (
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute inset-y-0 left-0 w-full bg-pop-black/95 backdrop-blur-md z-50 pop-border border-l-0 flex flex-col border-r-4 border-pop-cyan shadow-[10px_0_0_rgba(0,229,255,0.2)]"
+            >
+              <div className="p-3 bg-pop-cyan text-pop-black font-black text-xl flex justify-between items-center clip-diagonal mx-2 mt-2 border-2 border-pop-black">
+                <span>HISTORY LOG</span>
+                <button onClick={() => setShowBacklog(false)} className="text-2xl hover:scale-110 active:scale-90 transition-transform">&times;</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {script.slice(0, currentIndex).map((log, idx) => (
+                  <div key={idx} className="space-y-2 border-b-2 border-pop-black pb-4 relative">
+                    {log.type === 'narrator' ? (
+                      <div className="text-white text-base bg-white/5 p-3 clip-diagonal border border-white/10">{log.text}</div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          {log.avatar && <img src={log.avatar} alt="avatar" className="w-8 h-8 pop-border rounded-full object-cover object-top" />}
+                          <div className={`font-black text-sm px-2 py-0.5 pop-border -skew-x-6 ${log.color === 'bg-white' ? 'bg-pop-yellow text-pop-black' : `${log.color} text-pop-black`}`}>
+                            {displayName(log.speaker!, playerName)}
+                            {log.emotion && log.emotion !== '默认' && (
+                              <span className="ml-1 opacity-70">[{log.emotion}]</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className={`text-base font-bold pl-10 ${log.type === 'thought' ? 'text-blue-300' : 'text-white'}`}>
+                          {log.text}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // ── 桌面端布局（原有代码不变）──
   return (
     <div className="relative w-full h-full overflow-hidden font-sans contain-strict">
 
@@ -539,11 +1153,11 @@ export function StoryView() {
       <div className="absolute inset-0 z-0">
         {(() => {
           // NSFW 模式下显示 CG 背景（全屏铺满）
-          if (nsfwBackgroundUrl) {
+          if (nsfwCgUrl) {
             return (
               <img
-                src={nsfwBackgroundUrl}
-                alt={`NSFW CG ${nsfwStageIndex + 1}`}
+                src={nsfwCgUrl}
+                alt="NSFW CG"
                 className="w-full h-full object-cover"
                 style={{ willChange: 'transform' }}
                 decoding="async"
@@ -580,7 +1194,7 @@ export function StoryView() {
         })()}
       </div>
 
-      {/* 天气视觉叠层 — 叠在背景图上方、渐变遮罩下方 */
+      {/* 天气视觉叠层 — 叠在背景图上方、渐变遮罩下方 */}
       <WeatherOverlay gameTime={gameTime} isOutdoor={(() => {
         if (!currentLine?.location) return false;
         const spotName = currentLine.location.spot || currentLine.location.parent;
@@ -593,7 +1207,7 @@ export function StoryView() {
       {/* Sprite Area — z-15（立绘层，在背景之上，对话框之下） */}
       <div className="absolute inset-0 z-15 pointer-events-none overflow-hidden">
         <AnimatePresence mode="popLayout">
-          {!isNsfwMode && sceneCharacters.map((char) => (
+          {!nsfwCgUrl && sceneCharacters.map((char) => (
             <motion.div
               key={char.speaker}
               className={cn(
@@ -657,6 +1271,56 @@ export function StoryView() {
           />
         )}
       </div>
+
+      {/* 平行事件面板 — 桌面端 */}
+      <AnimatePresence mode="wait">
+        {parallelEvents.length > 0 && showParallelEvents && (
+          <motion.div
+            key="pe-desktop-expanded"
+            initial={{ x: -300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -300, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute top-4 left-4 z-30 max-w-65 pointer-events-auto"
+          >
+            <div className="bg-pop-black/90 backdrop-blur-md border-2 border-pop-cyan rounded-lg shadow-[4px_4px_0_rgba(0,229,255,0.3)] overflow-hidden">
+              <div className="flex items-center justify-between bg-pop-cyan/90 px-3 py-1.5 border-b-2 border-pop-black">
+                <div className="flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-pop-black" />
+                  <span className="font-black text-sm text-pop-black tracking-tight">平行事件</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowParallelEvents(false); }}
+                  className="text-pop-black hover:scale-110 active:scale-90 transition-transform"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-2.5 space-y-2">
+                {parallelEvents.map((evt, i) => (
+                  <div key={i} className="border-l-2 border-pop-pink pl-2">
+                    <div className="text-pop-yellow text-sm font-black leading-tight mb-1">{evt.location}</div>
+                    <div className="text-white/80 text-sm leading-snug">{evt.event}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {parallelEvents.length > 0 && !showParallelEvents && (
+          <motion.button
+            key="pe-desktop-collapsed"
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -50, opacity: 0 }}
+            onClick={(e) => { e.stopPropagation(); setShowParallelEvents(true); }}
+            className="absolute top-4 left-4 z-30 bg-pop-black/90 border-2 border-pop-cyan p-1.5 rounded-lg hover:scale-110 active:scale-90 transition-transform pointer-events-auto"
+            title="展开平行事件"
+          >
+            <Radio className="w-4 h-4 text-pop-cyan" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Text Box Area — 绝对定位悬浮在底部 */}
       <AnimatePresence mode="wait">
@@ -756,60 +1420,6 @@ export function StoryView() {
                     {isAutoMode ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                     <span className="hidden sm:inline">{isAutoMode ? 'Auto 开' : 'Auto'}</span>
                   </PopButton>
-                  {/* NSFW 按钮 */}
-                  {canShowNsfwButton && (
-                    <PopButton
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "gap-2 pop-border border-white shadow-none font-black",
-                        isNsfwMode
-                          ? "bg-pop-pink text-white hover:bg-pop-pink/80 animate-pulse"
-                          : "bg-red-500/80 text-white hover:bg-red-500"
-                      )}
-                      onClick={handleNsfwClick}
-                      title={isNsfwMode ? "点击退出特殊模式" : "点击进入特殊模式"}
-                    >
-                      <Heart className={cn("w-4 h-4", isNsfwMode && "fill-white animate-pulse")} />
-                      <span className="hidden sm:inline">{isNsfwMode ? '♥ 退出' : 'CG'}</span>
-                    </PopButton>
-                  )}
-                  {/* NSFW 阶段切换按钮（仅在 NSFW 模式下显示） */}
-                  {isNsfwMode && (
-                    <>
-                      <PopButton
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "gap-2 pop-border border-white shadow-none",
-                          hasPrevStage ? "bg-pop-cyan text-pop-black hover:bg-pop-yellow" : "bg-gray-600 text-gray-400 cursor-not-allowed"
-                        )}
-                        onClick={(e) => { e.stopPropagation(); prevNsfwStage(); }}
-                        disabled={!hasPrevStage}
-                        title="上一阶段"
-                      >
-                        <SkipBack className="w-4 h-4" />
-                      </PopButton>
-                      <PopButton
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "gap-2 pop-border border-white shadow-none",
-                          hasNextStage ? "bg-pop-cyan text-pop-black hover:bg-pop-yellow" : "bg-gray-600 text-gray-400 cursor-not-allowed"
-                        )}
-                        onClick={(e) => { e.stopPropagation(); nextNsfwStage(); }}
-                        disabled={!hasNextStage}
-                        title="下一阶段"
-                      >
-                        <SkipForward className="w-4 h-4" />
-                      </PopButton>
-                      {currentStage && (
-                        <span className="text-xs text-pop-pink font-bold self-center whitespace-nowrap">
-                          {nsfwStageIndex + 1}/{nsfwData?.stages.length} {currentStage.label}
-                        </span>
-                      )}
-                    </>
-                  )}
                   <PopButton
                     variant="ghost"
                     size="sm"

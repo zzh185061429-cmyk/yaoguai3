@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CG Studio · 批量生图工作台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-mode="general">
+<div class="container">
+  <header class="page-head">
+    <h1>CG Studio <span class="sub">可复用批量生图工作台</span></h1>
+    <button class="small ghost" onclick="window.open('/manual','_blank')">📖 使用说明书</button>
+  </header>
+
+  <!-- ═══ 模式切换 ═══ -->
+  <div class="mode-bar">
+    <div class="seg">
+      <button type="button" class="seg-btn active" data-mode="general" onclick="setMode('general')">🖼 通用生图</button>
+      <button type="button" class="seg-btn" data-mode="location" onclick="setMode('location')">🗺 地点 CG</button>
+    </div>
+    <p class="hint" id="mode-hint" style="margin:0"></p>
+  </div>
+
+  <!-- ═══ 设置 ═══ -->
+  <div class="panel open" id="panel-api">
+    <h2 onclick="togglePanel('panel-api')">⚙ 接口与运行设置</h2>
+    <div class="body">
+
+      <div class="subcard">
+        <div class="subcard-title">API 连接 · OpenAI 兼容中转站</div>
+        <div class="grid">
+          <label class="f"><span>API 地址（含 /v1）</span>
+            <input type="text" id="api-baseUrl" placeholder="http://127.0.0.1:18999/v1"></label>
+          <label class="f"><span>API Key</span>
+            <input type="password" id="api-key" placeholder="sk-..."></label>
+          <label class="f"><span>生图模型（点输入框或 ▾ 从列表选）</span>
+            <div class="combo" id="combo-api-model">
+              <input type="text" id="api-model" placeholder="gpt-image-2" autocomplete="off">
+              <button type="button" class="combo-btn" tabindex="-1" title="展开模型列表">▾</button>
+              <button type="button" class="combo-refresh" tabindex="-1" title="重新拉取模型列表">⟳</button>
+            </div></label>
+          <label class="f"><span>质量档位（影响花费）</span>
+            <div class="chips" id="quality-chips">
+              <button type="button" class="chipopt" data-v="low">low 省钱</button>
+              <button type="button" class="chipopt" data-v="medium">medium 推荐</button>
+              <button type="button" class="chipopt" data-v="high">high 最佳</button>
+              <button type="button" class="chipopt" data-v="auto">auto</button>
+            </div>
+            <input type="hidden" id="api-quality" value="medium"></label>
+        </div>
+        <div class="row-actions">
+          <button onclick="testConnection()">测试连接</button>
+          <span class="hint" id="conn-result" style="margin:0"></span>
+        </div>
+      </div>
+
+      <div class="subcard">
+        <div class="subcard-title">输出</div>
+        <div class="grid">
+          <label class="f"><span>尺寸比例</span>
+            <div class="chips" id="size-chips">
+              <button type="button" class="chipopt" data-ratio="16:9">16:9 横版</button>
+              <button type="button" class="chipopt" data-ratio="3:2">3:2 横版</button>
+              <button type="button" class="chipopt" data-ratio="1:1">1:1 方图</button>
+              <button type="button" class="chipopt" data-ratio="2:3">2:3 竖版</button>
+              <button type="button" class="chipopt" data-ratio="custom">自定义</button>
+            </div>
+            <div class="size-current">
+              <span class="size-label" id="size-current-label">1920×1080</span>
+              <input type="text" id="size-custom" placeholder="宽x高，如 1600x900" style="display:none">
+            </div>
+            <input type="hidden" id="api-size" value="1920x1080"></label>
+          <div class="f"><span>输出目录（图片与 manifest.json 保存位置）</span>
+            <div class="dir-row">
+              <button type="button" onclick="browseOutputDir()">浏览…</button>
+              <span class="dir-path" id="outputDir-show">（未设置）</span>
+            </div></div>
+        </div>
+        <p class="hint">模型按所选比例出图，精确像素由模型内部决定（如请求 1920×1080 实际约 1672×941）。比例是可靠的，分辨率不是。</p>
+      </div>
+
+      <details class="adv" id="adv-settings">
+        <summary>高级设置 · 并发 / 重试 / 超时 / 全局风格前缀</summary>
+        <div class="grid" style="margin-top:10px">
+          <label class="f"><span>并发数</span>
+            <input type="number" id="api-concurrency" min="1" max="8" value="2"></label>
+          <label class="f"><span>失败自动重试次数</span>
+            <input type="number" id="api-autoRetry" min="0" max="5" value="1"></label>
+          <label class="f"><span>单张超时（秒）</span>
+            <input type="number" id="api-timeoutSec" min="60" max="900" value="300"></label>
+        </div>
+        <label class="checkline" style="margin:8px 0 0">
+          <input type="checkbox" id="api-antiCache" checked> 防缓存变体标记（每次请求附加随机标记——中转站可能对完全相同的请求返回同一张缓存图，开启后重生成必定重新出图）
+        </label>
+        <div class="prefix-block">
+          <label class="checkline">
+            <input type="checkbox" id="prefix-enabled"> 启用全局风格前缀（批量展开时烘进每行提示词；快速生成时自动拼在最前）
+          </label>
+          <textarea id="prefix-text" rows="3" placeholder="所有图共用的风格提示词，例如：Visual novel background art style, anime scenery illustration, ..."></textarea>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- ═══ 快速生成（通用模式） ═══ -->
+  <div class="panel open gen-only" id="panel-quick">
+    <h2 onclick="togglePanel('panel-quick')">⚡ 快速生成（填提示词 → 出图，可导入参考图）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">每张卡片独立出图：填提示词（人像、场景、道具均可，中英文直接发送）→ 可选 📁 导入参考图 → 点生成（全局前缀会自动拼在最前）。尺寸 / 质量 / 模型用上方设置区的值；结果自动存入输出目录，也会出现在画廊里。</p>
+      <div class="qgrid" id="quick-grid"></div>
+      <div class="row-actions">
+        <button onclick="addQuickCard()">+ 加一张卡片</button>
+        <span class="hint">文件名留空 = 自动按时间命名（存到 快速生成/ 子文件夹）；同名再生成会直接覆盖旧图</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ AI 提示词工坊（地点 CG 模式） ═══ -->
+  <div class="panel loc-only" id="panel-ai">
+    <h2 onclick="togglePanel('panel-ai')">✨ AI 提示词工坊（中文地点描述 → 英文提示词）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">
+        用你已配置的中转站 API Key 调用文字模型，把中文地点描述自动转写成英文生图提示词。<b>支持多种通用格式</b>，每行一条，AI 自动识别：
+      </p>
+      <details style="margin-bottom:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:6px 12px">
+        <summary style="cursor:pointer; color:var(--accent); font-size:13px">📖 支持的输入格式（点开看示例）</summary>
+        <pre style="font-size:12.5px; line-height:1.9; white-space:pre-wrap; color:var(--muted); margin-top:6px">格式A — 地点名：描述（最通用）
+  奉天殿：朝会正殿，金柱礼器，空旷庄严
+  午门：五凤楼形制城楼，献俘颁诏
+
+格式B — 地点名, 室内|室外, 描述（完整三列）
+  奉天殿, 室内, 朝会正殿金柱礼器
+  午门, 室外, 五凤楼形制城楼
+
+格式C — 文件夹/地点名：描述（自动分组）
+  前朝大殿/奉天殿：朝会正殿
+  前朝门庭/午门：五凤楼形制
+
+格式D — 纯描述（AI 自动起名+判断室内外）
+  朝会正殿，金柱礼器，空旷庄严
+  五凤楼形制城楼，献俘颁诏
+
+以 # 开头为注释行，会被跳过。
+冒号支持中英文（：/:），逗号支持中英文（，/,）。</pre>
+      </details>
+      <textarea id="ai-raw-input" rows="6" placeholder="奉天殿：朝会正殿，金柱礼器，空旷庄严&#10;华盖殿：皇帝视朝前休息处，陈设典雅&#10;午门：五凤楼形制城楼，献俘颁诏，可观礼&#10;# 以上是示例，删掉换成你的地点描述"></textarea>
+      <div class="row-actions">
+        <label class="f" style="max-width:300px"><span>文字模型（点输入框或 ▾ 从列表选）</span>
+          <div class="combo" id="combo-api-textModel">
+            <input type="text" id="api-textModel" placeholder="gpt-5-6-mini" autocomplete="off">
+            <button type="button" class="combo-btn" tabindex="-1" title="展开模型列表">▾</button>
+            <button type="button" class="combo-refresh" tabindex="-1" title="重新拉取模型列表">⟳</button>
+          </div></label>
+        <button class="primary" id="btn-ai-go" onclick="aiWritePrompts()">✨ AI 转写英文提示词</button>
+      </div>
+      <p class="hint" style="margin-top:6px">转写结果自动写入下方「批量展开」的地点清单，可在展开前手动微调。室内/室外由 AI 根据描述自动推断。</p>
+      <div id="ai-result" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ═══ 批量展开（地点 CG 模式） ═══ -->
+  <div class="panel loc-only" id="panel-expand">
+    <h2 onclick="togglePanel('panel-expand')">📐 批量展开（地点清单 → 变体矩阵）</h2>
+    <div class="body">
+      <details class="adv" style="margin-bottom:12px">
+        <summary>📥 导入提示词设计（粘贴设计文档，一键填入全局风格与全部布局指令）</summary>
+        <textarea id="design-import" rows="7" style="margin-top:10px" placeholder="**全局风格（所有地点共用，不变）：**&#10;> 英文全局前缀…&#10;&#10;室内版布局指令（昼）：&#10;Daytime interior, …&#10;&#10;室外版布局指令（晴天组 - 夜）：&#10;Sunny nighttime, …"></textarea>
+        <div class="row-actions" style="margin-top:8px">
+          <button class="primary" onclick="importDesign()">解析并填入</button>
+          <span class="hint">识别「全局风格」与 室内/室外 × 晴/阴/雪 × 昼/夜 各段；中文说明行自动忽略，只取英文指令；有内容的天气组自动勾选启用</span>
+        </div>
+      </details>
+      <div class="variant-block">
+        <div class="vb-title">室内变体 <span class="hint" style="margin:0">昼 = 锚点（文生图），夜派生自昼</span></div>
+        <div class="grid2">
+          <label class="f"><span>昼（锚点）</span>
+            <textarea id="expand-indoor-day" rows="3"></textarea></label>
+          <label class="f"><span>夜</span>
+            <textarea id="expand-indoor-night" rows="3"></textarea></label>
+        </div>
+      </div>
+      <div class="variant-block">
+        <div class="vb-title">室外变体 <span class="hint" style="margin:0">晴 / 阴 / 雪 × 昼 / 夜，勾选启用某种天气；第一个启用的昼 = 锚点</span></div>
+        <div class="ow-row">
+          <label class="checkline"><input type="checkbox" id="expand-ow-sunny-enabled" checked> 晴</label>
+          <label class="f"><span>昼</span><textarea id="expand-ow-sunny-day" rows="2"></textarea></label>
+          <label class="f"><span>夜</span><textarea id="expand-ow-sunny-night" rows="2"></textarea></label>
+        </div>
+        <div class="ow-row">
+          <label class="checkline"><input type="checkbox" id="expand-ow-overcast-enabled" checked> 阴</label>
+          <label class="f"><span>昼</span><textarea id="expand-ow-overcast-day" rows="2"></textarea></label>
+          <label class="f"><span>夜</span><textarea id="expand-ow-overcast-night" rows="2"></textarea></label>
+        </div>
+        <div class="ow-row">
+          <label class="checkline"><input type="checkbox" id="expand-ow-snow-enabled" checked> 雪</label>
+          <label class="f"><span>昼</span><textarea id="expand-ow-snow-day" rows="2"></textarea></label>
+          <label class="f"><span>夜</span><textarea id="expand-ow-snow-night" rows="2"></textarea></label>
+        </div>
+      </div>
+      <label class="checkline" style="margin:2px 0 8px">
+        场景描述可以写<b>中文</b>（gpt-image 可直接理解中文），原样拼进提示词发送
+      </label>
+      <label class="f" style="margin-top:10px"><span>地点清单（每行：<b>文件夹/地点名, 室内|室外, 场景描述</b>；描述中英文均可；# 开头为注释）</span>
+        <textarea id="expand-locations" rows="5" placeholder="前朝大殿/奉天殿, 室内, 皇帝给百官举行大典的正殿，金柱礼器，空旷庄严&#10;前朝门庭/午门, 室外, Imperial gate courtyard where the emperor holds daily court"></textarea></label>
+      <div class="row-actions">
+        <button class="primary" onclick="expandToTasks()">展开到任务表 ▾</button>
+        <span class="hint">室内 → 昼/夜 2 行；室外 → 启用的天气 × 昼/夜。<b>行内提示词 = 全局前缀 + 地点名:描述 + 布局指令，展开时烘进每行即最终发送内容——地点名必须进提示词，模型不看文件名。</b>同名任务行提示词有变化时原位更新，无变化跳过。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 任务表（地点 CG 模式的批量执行清单） ═══ -->
+  <div class="panel open loc-only" id="panel-tasks">
+    <h2 onclick="togglePanel('panel-tasks')">📋 任务清单（每行 = 一张图 = 一个文件名）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">
+        <b>文件名</b>：最终保存名，可用 <b>文件夹/名称</b> 分组（如 前朝大殿/奉天殿-昼，自动建文件夹，自动统一 .png）　<b>参考图</b>：留空 = 文生图锚点；填另一行的文件名 = 用它派生；填外部路径 = 导入已有图当参考
+      </p>
+      <div style="overflow-x:auto">
+      <table class="tasks">
+        <thead><tr>
+          <th class="col-file">文件名</th><th class="col-ref">参考图（可选）</th>
+          <th>提示词</th><th class="col-status">预检</th><th class="col-act">操作</th>
+        </tr></thead>
+        <tbody id="task-body"></tbody>
+      </table>
+      </div>
+      <div class="row-actions">
+        <button onclick="addTaskRow()">+ 加一行</button>
+        <button onclick="pasteImport()">从 Excel 粘贴导入（3列：文件名/参考图/提示词）</button>
+        <button onclick="exportCsv()">导出 CSV</button>
+        <button class="danger" onclick="clearTasks()">清空</button>
+        <label class="checkline" style="font-size:12.5px">
+          <input type="checkbox" id="hide-done-tasks" onchange="renderTasks()"> 隐藏已完成/已存在的行
+        </label>
+        <span class="hint" id="task-count"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 运行（地点 CG 模式的批量执行） ═══ -->
+  <div class="panel open loc-only" id="panel-run">
+    <h2 onclick="togglePanel('panel-run')">▶ 预检与批量执行</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <button onclick="doPreflight()">预检（校验参考与依赖）</button>
+        <button class="primary" id="btn-start" onclick="startBatch()">开始批量生成 ▶</button>
+        <button class="danger" id="btn-stop" onclick="stopBatch()" disabled>停止 ■</button>
+        <span id="useStats"></span>
+      </div>
+      <div class="summary-chips" id="run-summary"></div>
+      <div class="progress-outer"><div class="progress-inner" id="prog"></div><div class="progress-text" id="prog-text">待开始</div></div>
+      <pre class="log" id="log">（日志）</pre>
+    </div>
+  </div>
+
+  <!-- ═══ 画廊 ═══ -->
+  <div class="panel" id="panel-gallery">
+    <h2 onclick="togglePanel('panel-gallery')">🖼 结果画廊（审阅 / 重生成 / 删除）</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <button onclick="loadGallery(true)">刷新</button>
+        <button onclick="hideAllGallery()" title="把当前已生成的图全部标记为已审并清空列表显示（文件和记录都不动）">✔ 全部已审，清空显示</button>
+        <button onclick="resetGalleryHidden()">显示全部（重置已审）</button>
+        <span class="hint" id="gallery-hidden-count"></span>
+      </div>
+      <div class="row-actions" style="border:1px dashed var(--border); border-radius:8px; padding:8px 10px">
+        <b style="font-size:13px">✂ 白底抠图</b>
+        <label style="font-size:12.5px;color:var(--muted)">白底容差
+          <input type="number" id="cut-tolerance" value="12" min="2" max="60" style="width:56px" title="越大越激进：245=容差10。白底带浅灰阴影时调大"></label>
+        <label style="font-size:12.5px;color:var(--muted)">边缘羽化
+          <input type="number" id="cut-feather" value="1" min="0" max="3" style="width:48px" title="0=硬边；1-2=柔和去白边"></label>
+        <button class="primary" onclick="batchCutout()">✂ 批量抠图（未抠的全部）</button>
+        <span class="hint">只删除<b>与边框连通</b>的白色区域——被轮廓包住的白尾巴/白衣/高光不会被动</span>
+      </div>
+      <div class="gallery" id="gallery"></div>
+    </div>
+  </div>
+
+  <!-- ═══ AI 助手（对话） ═══ -->
+  <div class="panel" id="panel-chat">
+    <h2 onclick="togglePanel('panel-chat')">💬 AI 助手（对话式写提示词）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">
+        用你已配置的中转站 API Key 直接和文字模型对话：描述场景、改写提示词、讨论风格——满意了点「导入」。
+      </p>
+      <div class="row-actions" style="margin-top:0">
+        <label class="f" style="max-width:300px"><span>文字模型（点输入框或 ▾ 从列表选）</span>
+          <div class="combo" id="combo-chat-model">
+            <input type="text" id="chat-model" placeholder="gpt-5-6-mini" autocomplete="off">
+            <button type="button" class="combo-btn" tabindex="-1" title="展开模型列表">▾</button>
+            <button type="button" class="combo-refresh" tabindex="-1" title="重新拉取模型列表">⟳</button>
+          </div></label>
+        <button class="primary" id="btn-chat-send" onclick="chatSend()">发送</button>
+        <button onclick="chatClear()">清空对话</button>
+        <span class="hint" id="chat-status"></span>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-wrap">
+        <textarea id="chat-input" rows="3" placeholder="描述你的场景，或让 AI 改写提示词…&#10;例：帮我写一个明代奉天殿的英文提示词，要有金柱和礼器&#10;例：把上面那段提示词改得更偏二次元风格&#10;Ctrl+Enter 发送"></textarea>
+        <div class="row-actions" style="margin-top:6px">
+          <button class="small" onclick="chatExportToTasks()">导入最后一条到任务表</button>
+          <button class="small" onclick="chatExportToLocations()">导入到地点清单</button>
+          <button class="small" onclick="chatExportToPrefix()">导入到全局前缀</button>
+          <span class="hint">从 AI 最后一条回复中提取英文提示词文本</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 图床上传 ═══ -->
+  <div class="panel" id="panel-postimg">
+    <h2 onclick="togglePanel('panel-postimg')">☁ 图床上传（PostImages · 自动建表存档）</h2>
+    <div class="body">
+      <div class="grid" style="grid-template-columns: 2fr 3fr; gap:12px">
+        <label class="f"><span>PostImages API Key</span>
+          <input type="password" id="postimg-key" placeholder="登录 postimages.org 后到 /login/api 页面生成"></label>
+        <div class="hint" style="align-self:end; margin:0">
+          获取方法（一次性）：浏览器登录 <b>postimages.org</b> → 打开 <b>postimages.org/login/api</b> → 生成并复制 Key 粘贴到这里。
+          Key 只保存在本机 data/config.json，不外传。
+        </div>
+      </div>
+
+      <div class="row-actions">
+        <button onclick="scanUploads()">扫描输出目录</button>
+        <button class="primary" id="btn-up-start" onclick="startUploads()">开始上传 ▶</button>
+        <button class="danger" id="btn-up-stop" onclick="stopUploads()" disabled>停止 ■</button>
+      </div>
+
+      <div id="upload-groups" style="margin-top:10px"></div>
+
+      <div class="progress-outer" style="margin-top:10px"><div class="progress-inner" id="up-prog"></div><div class="progress-text" id="up-prog-text">待上传</div></div>
+      <pre class="log" id="up-log">（上传日志）</pre>
+      <p class="hint">完成后在输出目录生成 <b>图床链接.txt</b>：按你的文件夹结构分组、每张图一条直链的纯文本文档。已上传的图重跑自动跳过。</p>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

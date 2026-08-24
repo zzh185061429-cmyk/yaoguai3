@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAI Studio · NovelAI 角色立绘工作台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-mode="general">
+<div class="container">
+  <div id="jserr" style="display:none; color:#e05d5d; font-size:12px; white-space:pre-wrap; background:#1a1114; border:1px solid #e05d5d; border-radius:8px; padding:8px 12px; margin-bottom:10px"></div>
+  <script>
+    window.addEventListener('error', e => {
+      const d = document.getElementById('jserr');
+      if (d) { d.style.display = ''; d.textContent += '⚠ ' + (e.message || e.type) + ' @ ' + (e.filename || '').split('/').pop() + ':' + (e.lineno || '?') + '\n'; }
+    });
+    window.addEventListener('unhandledrejection', e => {
+      const d = document.getElementById('jserr');
+      if (d) { d.style.display = ''; d.textContent += '⚠ Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)) + '\n'; }
+    });
+  </script>
+  <header class="page-head">
+    <h1>NAI Studio <span class="sub">NovelAI 角色立绘工作台</span></h1>
+    <button class="small ghost" onclick="window.open('/manual','_blank')">📖 使用说明书</button>
+  </header>
+
+  <!-- ═══ 订阅信息条（常显） ═══ -->
+  <div class="sub-bar" id="sub-bar">
+    <span class="sub-item" id="sub-tier" title="订阅档位">💎 未连接</span>
+    <span class="sub-item" id="sub-anlas" title="Anlas 余额">Anlas —</span>
+    <span class="sub-item" id="sub-expire" title="会员到期">会员 —</span>
+    <span class="sub-item" id="sub-v5" title="V5 用量池（Opus，电池式恢复）" style="display:none">V5 —</span>
+    <button class="small" onclick="refreshSubscription(true)">⟳ 刷新</button>
+    <span class="hint" id="sub-updated" style="margin:0"></span>
+  </div>
+
+  <!-- ═══ 模式切换 ═══ -->
+  <div class="mode-bar">
+    <div class="seg">
+      <button type="button" class="seg-btn active" data-mode="general" onclick="setMode('general')">🖼 通用生图</button>
+      <button type="button" class="seg-btn" data-mode="role" onclick="setMode('role')">🧙 角色立绘工坊</button>
+    </div>
+    <p class="hint" id="mode-hint" style="margin:0"></p>
+  </div>
+
+  <!-- ═══ 连接与参数 ═══ -->
+  <div class="panel open" id="panel-api">
+    <h2 onclick="togglePanel('panel-api')">⚙ 连接与生成参数</h2>
+    <div class="body">
+      <div class="subcard">
+        <div class="subcard-title">NAI 令牌</div>
+        <div class="grid">
+          <label class="f"><span>持久 API Token（novelai.net → 账户设置 → API Key 生成，pst- 开头）</span>
+            <input type="password" id="nai-token" placeholder="pst-xxxxxxxxxxxx" autocomplete="off"></label>
+        </div>
+        <div class="row-actions">
+          <button onclick="testConnection()">测试连接</button>
+          <span class="hint" id="conn-result" style="margin:0"></span>
+        </div>
+        <p class="hint">令牌只保存在本机 data/config.json（已 gitignore），不会写进 Git。令牌 = 账号钥匙，请勿截图外发。</p>
+      </div>
+
+      <div class="subcard">
+        <div class="subcard-title">网络与代理（Node 不走浏览器代理，梯子需在此配置）</div>
+        <div class="grid">
+          <label class="f"><span>代理地址（留空 = 自动跟随系统代理；修改后需重启服务）</span>
+            <input type="text" id="nai-proxyUrl" placeholder="http://127.0.0.1:7890"></label>
+        </div>
+        <div class="row-actions">
+          <button onclick="detectProxy()">检测代理</button>
+          <span class="hint" id="proxy-status" style="margin:0"></span>
+        </div>
+        <p class="hint">挂了梯子仍连不上时点「检测代理」：会探测系统代理与 Clash/v2rayN 常用端口，一键应用。TUN/全局模式无需配置。</p>
+      </div>
+
+      <div class="subcard">
+        <div class="subcard-title">模型与尺寸</div>
+        <div class="grid">
+          <label class="f"><span>模型</span>
+            <select id="nai-model"></select></label>
+          <div class="f"><span>分辨率（64 的倍数，最大 3047424 像素）</span>
+            <select id="nai-resolution"></select>
+            <div class="size-current"><span class="size-label" id="size-current-label">832×1216</span></div>
+          </div>
+        </div>
+        <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));">
+          <label class="f"><span>宽</span><input type="number" id="nai-width" min="64" max="3072" step="64"></label>
+          <label class="f"><span>高</span><input type="number" id="nai-height" min="64" max="3072" step="64"></label>
+        </div>
+      </div>
+
+      <div class="subcard">
+        <div class="subcard-title">采样参数</div>
+        <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));">
+          <label class="f"><span>步数（Opus 免费 ≤28）</span><input type="number" id="nai-steps" min="1" max="100"></label>
+          <label class="f"><span>Scale (CFG)</span><input type="number" id="nai-scale" min="0" max="10" step="0.5"></label>
+          <label class="f"><span>采样器</span><select id="nai-sampler"></select></label>
+          <label class="f"><span>噪声调度</span><select id="nai-noiseSchedule"></select></label>
+          <label class="f"><span>CFG Rescale</span><input type="number" id="nai-cfgRescale" min="0" max="1" step="0.05"></label>
+          <label class="f"><span>img2img 强度（派生参考时）</span><input type="number" id="nai-img2imgStrength" min="0.1" max="0.99" step="0.05"></label>
+        </div>
+        <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top:10px">
+          <label class="f"><span>负面预设 (UC Preset)</span>
+            <select id="nai-ucPreset">
+              <option value="0">重型 Heavy</option>
+              <option value="1">轻型 Light</option>
+              <option value="2">人物导向 Human Focus</option>
+              <option value="3">无 None</option>
+            </select></label>
+          <label class="checkline" style="align-self:end"><input type="checkbox" id="nai-qualityToggle" checked> 追加质量标签（very aesthetic…）</label>
+        </div>
+        <label class="f" style="margin-top:10px"><span>全局负面前缀（拼在 UC 预设之后）</span>
+          <textarea id="globalNegative-text" rows="2" placeholder="例如: multiple views, logo, watermark"></textarea></label>
+      </div>
+
+      <details class="adv">
+        <summary>高级 · 全局画师串 / 请求节流 / Anlas 预算</summary>
+        <div class="prefix-block">
+          <label class="checkline"><input type="checkbox" id="prefix-enabled"> 启用全局画师串/风格前缀（自动拼在每条提示词最前）</label>
+          <textarea id="prefix-text" rows="3" placeholder="所有图共用的画师串与风格，例如: artist:xxx, artist:yyy, anime style, ..."></textarea>
+        </div>
+        <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin-top:10px">
+          <label class="f"><span>并发（建议 1）</span><input type="number" id="nai-concurrency" min="1" max="4" value="1"></label>
+          <label class="f"><span>请求间隔（毫秒，防限流）</span><input type="number" id="nai-requestIntervalMs" min="0" max="60000" step="500" value="3000"></label>
+          <label class="f"><span>失败重试次数</span><input type="number" id="nai-autoRetry" min="0" max="5" value="1"></label>
+          <label class="f"><span>单张超时（秒）</span><input type="number" id="nai-timeoutSec" min="30" max="900" value="180"></label>
+        </div>
+        <div class="row-actions">
+          <label class="checkline"><input type="checkbox" id="budget-enabled"> 启用 Anlas 预算上限</label>
+          <label class="f" style="max-width:160px"><span>上限（Anlas）</span><input type="number" id="budget-anlasLimit" min="1" value="500"></label>
+        </div>
+      </details>
+
+      <div class="subcard">
+        <div class="subcard-title">输出目录</div>
+        <div class="dir-row">
+          <button type="button" onclick="browseOutputDir()">浏览…</button>
+          <span class="dir-path" id="outputDir-show">（未设置）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 快速生图（通用模式） ═══ -->
+  <div class="panel open gen-only" id="panel-quick">
+    <h2 onclick="togglePanel('panel-quick')">⚡ 快速生图（提示词 → 出图，可带参考图）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">每张卡片独立出图：填提示词（danbooru 标签，输入时有联想）→ 可选参考图（img2img 派生）→ 生成。参数用上方设置区的值；结果自动进输出目录与画廊。NAI 出图自带透明背景。</p>
+      <div class="qgrid" id="quick-grid"></div>
+      <div class="row-actions">
+        <button onclick="addQuickCard()">+ 加一张卡片</button>
+        <span class="hint">文件名留空 = 自动按时间命名（快速生成/ 子文件夹）</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 提示词工坊（共用） ═══ -->
+  <div class="panel" id="panel-ai">
+    <h2 onclick="togglePanel('panel-ai')">✨ 提示词工坊（编辑 / 权重 / AI 协作，不只是翻译）</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <b style="font-size:13px">① 源提示词</b>
+        <select id="pw-import-src" style="max-width:220px" onchange="pwImport()">
+          <option value="">导入来源…</option>
+          <option value="last">最近一次生成</option>
+          <option value="prefix">全局前缀</option>
+        </select>
+        <select id="pw-import-task" style="max-width:260px" onchange="pwImportTask()">
+          <option value="">从任务行导入…</option>
+        </select>
+      </div>
+      <textarea id="ai-raw-input" class="suggest-ta" rows="4" placeholder="danbooru 标签提示词，或直接写中文（配合「中译英」）…&#10;例: 1girl, fox_tail, white_kimono, full_body"></textarea>
+      <div class="row-actions">
+        <button onclick="pwParse()">🧩 拆成标签编辑</button>
+        <span class="hint" style="margin:0">拆解后可逐个标签删除/调权重（{} 增强 / [] 减弱，NAI 语法），改动实时写回源文本</span>
+      </div>
+      <div id="pw-chips" class="pw-chips" style="display:none">
+        <div class="row-actions" style="margin:0 0 6px">
+          <input type="text" id="pw-add-tag" class="suggest-ta" placeholder="+ 输入新标签（有联想），回车添加" style="max-width:340px"
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); pwAddTag(this.value); this.value=''}">
+        </div>
+        <div id="pw-chip-list" class="chip-list"></div>
+      </div>
+      <div class="row-actions">
+        <b style="font-size:13px">② AI 协作</b>
+        <button class="small" onclick="aiRun('translate')">🌐 中译英</button>
+        <button class="small" onclick="aiRun('expand')">➕ 扩写加细节</button>
+        <button class="small" onclick="aiRun('slim')">✂ 瘦身去冗余</button>
+        <select id="pw-style" style="max-width:200px">
+          <option value="更华丽的动画电影风格">更华丽</option>
+          <option value="更简洁干净的插画风格">更简洁</option>
+          <option value="更写实的厚涂油画风格">更写实</option>
+          <option value="更经典的日式动漫赛璐璐风格">更动漫</option>
+        </select>
+        <button class="small" onclick="aiRun('restyle')">🎨 按风格改写</button>
+        <span class="hint" id="ai-status" style="margin:0"></span>
+      </div>
+      <textarea id="ai-result" class="suggest-ta" rows="5" style="display:none; margin-top:6px" placeholder="AI 结果（可继续编辑）"></textarea>
+      <div class="row-actions" id="ai-actions" style="display:none">
+        <b style="font-size:13px">③ 发送到</b>
+        <button class="small" onclick="pwSend('quick')">快速生图新卡片</button>
+        <button class="small" onclick="pwSend('anchor')">当前角色锚点串</button>
+        <button class="small" onclick="pwSend('prefix')">全局前缀</button>
+        <button class="small" onclick="pwSend('artist')">存为画师串收藏</button>
+        <button class="small" onclick="pwUseAsSource()">⤴ 结果作为新源继续改</button>
+        <button class="small" onclick="aiCopy()">复制</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 画师串收藏库（共用） ═══ -->
+  <div class="panel" id="panel-artists">
+    <h2 onclick="togglePanel('panel-artists')">🏷 画师串收藏库（存好用的人设/画师组合，一键插入）</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <button onclick="addArtist()">+ 新增收藏</button>
+        <button onclick="appendArtistsToPrefix()">全部插入全局前缀</button>
+        <span class="hint">收藏 = 名称 + 提示词串；在提示词联想下拉里也能选收藏插入</span>
+      </div>
+      <div id="artist-list"></div>
+    </div>
+  </div>
+
+  <!-- ═══ 角色工坊（角色模式） ═══ -->
+  <div class="panel open role-only" id="panel-roles">
+    <h2 onclick="togglePanel('panel-roles')">🧙 角色卡（锚点串 + 变体池 → 批量展开）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">
+        每张角色卡 = <b>人设锚点串</b>（发色瞳色服装等不变特征）+ 若干 <b>变体</b>（姿势/表情/服装/镜头）。展开后每变体 × 数量生成任务；
+        文件名自动归档到 <b>文件夹/角色名-变体-序号.png</b>。想保持同一张脸，把 seed 固定或用任务表的 img2img 派生。
+      </p>
+      <div id="role-list"></div>
+      <div class="row-actions">
+        <button class="primary" onclick="addRole()">+ 新建角色卡</button>
+        <button class="primary" onclick="expandRoles()">📐 展开到任务表 ▾</button>
+        <span class="hint" id="expand-result"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 任务表（角色模式） ═══ -->
+  <div class="panel open role-only" id="panel-tasks">
+    <h2 onclick="togglePanel('panel-tasks')">📋 任务清单（每行 = 一张图）</h2>
+    <div class="body">
+      <p class="hint" style="margin-top:0">
+        <b>文件名</b>：可用 文件夹/名称 分组　<b>参考图</b>：留空 = 文生图；填另一行文件名 = img2img 派生（保持角色一致）　<b>seed</b>：-1 = 随机
+      </p>
+      <div style="overflow-x:auto">
+      <table class="tasks">
+        <thead><tr>
+          <th class="col-file">文件名</th><th class="col-ref">参考图（可选）</th>
+          <th>提示词</th><th class="col-seed">Seed</th><th class="col-status">预检</th><th class="col-act">操作</th>
+        </tr></thead>
+        <tbody id="task-body"></tbody>
+      </table>
+      </div>
+      <div class="row-actions">
+        <button onclick="addTaskRow()">+ 加一行</button>
+        <button class="danger" onclick="clearTasks()">清空</button>
+        <label class="checkline" style="font-size:12.5px"><input type="checkbox" id="hide-done-tasks" onchange="renderTasks()"> 隐藏已完成</label>
+        <span class="hint" id="task-count"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 预检与批量执行（角色模式） ═══ -->
+  <div class="panel open role-only" id="panel-run">
+    <h2 onclick="togglePanel('panel-run')">▶ 预检与批量执行（含 Anlas 预估）</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <button onclick="doPreflight()">预检</button>
+        <button class="primary" id="btn-start" onclick="startBatch()">开始批量生成 ▶</button>
+        <button class="danger" id="btn-stop" onclick="stopBatch()" disabled>停止 ■</button>
+        <span id="useStats"></span>
+      </div>
+      <div class="summary-chips" id="run-summary"></div>
+      <div class="progress-outer"><div class="progress-inner" id="prog"></div><div class="progress-text" id="prog-text">待开始</div></div>
+      <pre class="log" id="log">（日志）</pre>
+    </div>
+  </div>
+
+  <!-- ═══ 画廊 ═══ -->
+  <div class="panel" id="panel-gallery">
+    <h2 onclick="togglePanel('panel-gallery')">🖼 结果画廊（审阅 / 重生成 / ✂ 去白边）</h2>
+    <div class="body">
+      <div class="row-actions" style="margin-top:0">
+        <button onclick="loadGallery(true)">刷新</button>
+        <span class="hint" id="gallery-count"></span>
+      </div>
+      <div class="row-actions" style="border:1px dashed var(--border); border-radius:8px; padding:8px 10px">
+        <b style="font-size:13px">✂ 自动去白边（按 alpha 通道，不误伤白色主体）</b>
+        <label style="font-size:12.5px;color:var(--muted)">边缘收缩
+          <input type="number" id="cut-shrink" value="1" min="0" max="3" style="width:48px" title="裁掉轮廓外几像素的半透明白边"></label>
+        <label style="font-size:12.5px;color:var(--muted)">alpha 阈值
+          <input type="number" id="cut-threshold" value="24" min="4" max="96" style="width:56px" title="低于此 alpha 的噪点直接清除"></label>
+        <label class="checkline" style="font-size:12.5px"><input type="checkbox" id="cut-defringe" checked> 去白色污染（边缘颜色去白）</label>
+        <button class="primary" onclick="batchCutout()">✂ 批量去白边（未处理的全部）</button>
+        <span class="hint">判定依据是<b>透明度结构</b>而非颜色——白袍/白尾巴/鼻尖阴影是实心区域，原理上不会被误删</span>
+      </div>
+      <div class="gallery" id="gallery"></div>
+    </div>
+  </div>
+</div>
+
+<div id="suggest-layer"></div>
+
+<script src="/cutout.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
