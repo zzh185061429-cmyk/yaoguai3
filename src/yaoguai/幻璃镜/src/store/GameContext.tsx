@@ -222,7 +222,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const data = loadChatData();
     if (!data) return;
     setPlayerNameState(data.playerName);
-    if (data.clues) {
+    if (data.clues && data.clues.length > 0) {
       cluesRef.current = data.clues;
       setClues(data.clues);
     }
@@ -230,7 +230,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       clueConnectionsRef.current = data.clueConnections;
       setClueConnections(data.clueConnections);
     }
-    if (data.cases) {
+    if (data.cases && data.cases.length > 0) {
       casesRef.current = data.cases;
       setCases(data.cases);
     }
@@ -238,12 +238,19 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     loadChatDataIntoState();
-    const stop = eventOn(tavern_events.CHAT_CHANGED, () => {
-      loadChatDataIntoState();
-      setLastAssistantFloorId(getLatestAssistantId());
-      setViewingFloorId(null);
-    });
-    return () => stop.stop();
+    try {
+      const stop = eventOn(tavern_events.CHAT_CHANGED, () => {
+        loadChatDataIntoState();
+        setLastAssistantFloorId(getLatestAssistantId());
+        setViewingFloorId(null);
+      });
+      return () => {
+        if (stop?.stop) stop.stop();
+      };
+    } catch (e) {
+      console.warn('[幻璃镜] CHAT_CHANGED 监听注册跳过:', e);
+      return undefined;
+    }
   }, [loadChatDataIntoState]);
 
   const setPlayerName = useCallback((name: string | undefined) => {
@@ -318,7 +325,7 @@ export const GameProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const stops: (() => void)[] = [];
     const register = (ret: EventOnReturn | undefined) => {
-      if (ret?.stop) stops.push(() => ret.stop());
+      if (ret?.stop) stops.push(() => ret.stop?.());
     };
     register(eventOn(tavern_events.MESSAGE_RECEIVED, () => {
       syncLatestFloor();

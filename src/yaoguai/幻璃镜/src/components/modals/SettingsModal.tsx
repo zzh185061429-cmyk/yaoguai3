@@ -90,7 +90,7 @@ function VolumeRow({
         <div className="flex-1 relative h-5 flex items-center">
           <div className="absolute inset-x-0 h-2 bg-ink-700 rounded-full overflow-hidden border border-ink-600">
             <div
-              className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 transition-[width] duration-100"
+              className="h-full bg-linear-to-r from-cyan-600 to-cyan-400 transition-[width] duration-100"
               style={{ width: `${muted ? 0 : volume * 100}%` }}
             />
           </div>
@@ -265,7 +265,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           >
             {/* 标题栏 */}
             <div className="flex items-center justify-between bg-ink-900/80 px-5 py-4 border-b border-ink-700/50 relative">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cyan-500 to-gold-500" />
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-linear-to-b from-cyan-500 to-gold-500" />
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-cyan-400" />
                 <span className="font-serif text-lg text-paper-100 tracking-widest">设置</span>
@@ -280,11 +280,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
 
             {/* Tab 切换 */}
-            <div className="flex gap-1 px-4 pt-4">
+            <div className="flex gap-1 px-3 pt-3 overflow-x-auto hide-scrollbar shrink-0">
               <button
                 onClick={() => { setActiveTab('audio'); sfx.play('tabSwitch'); }}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border',
+                  'flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border whitespace-nowrap shrink-0',
                   activeTab === 'audio'
                     ? 'bg-cyan-700 text-cyan-100 border-cyan-500'
                     : 'bg-ink-700/50 text-paper-200/50 border-ink-600/50 hover:bg-ink-700 hover:text-paper-200'
@@ -296,7 +296,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <button
                 onClick={() => { setActiveTab('text'); sfx.play('tabSwitch'); }}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border',
+                  'flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border whitespace-nowrap shrink-0',
                   activeTab === 'text'
                     ? 'bg-gold-700 text-gold-100 border-gold-500'
                     : 'bg-ink-700/50 text-paper-200/50 border-ink-600/50 hover:bg-ink-700 hover:text-paper-200'
@@ -308,7 +308,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <button
                 onClick={() => { setActiveTab('display'); sfx.play('tabSwitch'); }}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border',
+                  'flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border whitespace-nowrap shrink-0',
                   activeTab === 'display'
                     ? 'bg-vermilion-700 text-vermilion-100 border-vermilion-500'
                     : 'bg-ink-700/50 text-paper-200/50 border-ink-600/50 hover:bg-ink-700 hover:text-paper-200'
@@ -320,7 +320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <button
                 onClick={() => { setActiveTab('deduce'); sfx.play('tabSwitch'); }}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border',
+                  'flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-serif tracking-wide rounded transition-all border whitespace-nowrap shrink-0',
                   activeTab === 'deduce'
                     ? 'bg-emerald-700 text-emerald-100 border-emerald-500'
                     : 'bg-ink-700/50 text-paper-200/50 border-ink-600/50 hover:bg-ink-700 hover:text-paper-200'
@@ -330,7 +330,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 推演
               </button>
             </div>
-            <div className="p-5 pt-4 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+            <div className="p-3 sm:p-5 pt-3 sm:pt-4 space-y-4 max-h-[55vh] sm:max-h-[60vh] overflow-y-auto custom-scrollbar">
 
               {activeTab === 'audio' ? (
                 <>

@@ -1,69 +1,139 @@
 @import "tailwindcss";
 
 @theme {
-  --font-serif: "ZCOOL XiaoWei", serif;
-  --font-sans: "Noto Sans SC", sans-serif;
+  --font-serif: "Noto Serif SC", "ZCOOL XiaoWei", "Songti SC", serif;
+  --font-sans: "Noto Serif SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", serif;
+  --font-calligraphy: "Ma Shan Zheng", "ZCOOL XiaoWei", cursive, serif;
 
   --color-ink-500: #525252;
   --color-ink-600: #3f3f3f;
   --color-ink-700: #262626;
-  --color-ink-800: #141414;
-  --color-ink-850: #101010;
-  --color-ink-900: #0a0a0a;
-  --color-ink-950: #050505;
+  --color-ink-800: #181512;
+  --color-ink-850: #120f0d;
+  --color-ink-900: #0a0908;
+  --color-ink-950: #050403;
 
-  --color-paper-100: #f5f4ef;
-  --color-paper-200: #e6e4dc;
-  --color-paper-300: #d9d5c9;
+  --color-paper-50: #faf8f2;
+  --color-paper-100: #f6f1e5;
+  --color-paper-200: #eee5d3;
+  --color-paper-300: #e0d4be;
+  --color-paper-400: #cbbaa0;
+  --color-paper-500: #b59f82;
 
   --color-vermilion-300: #e87060;
   --color-vermilion-400: #df5645;
-  --color-vermilion-500: #d63d2e;
-  --color-vermilion-600: #b82d20;
-  --color-vermilion-700: #9c2a1e;
-  --color-vermilion-800: #7d2016;
-  --color-vermilion-900: #4a1510;
-  --color-vermilion-950: #2e0d09;
+  --color-vermilion-500: #cf3a2c;
+  --color-vermilion-600: #b02b1f;
+  --color-vermilion-700: #942016;
+  --color-vermilion-800: #75170f;
+  --color-vermilion-900: #4a100a;
+  --color-vermilion-950: #2b0805;
 
-  --color-cyan-300: #5ab8b8;
-  --color-cyan-400: #48a8a8;
-  --color-cyan-500: #308f8f;
-  --color-cyan-600: #236b6b;
-  --color-cyan-700: #1a5050;
-  --color-cyan-900: #0d2e2e;
-  --color-cyan-950: #071c1c;
+  --color-cyan-300: #62b5b5;
+  --color-cyan-400: #479e9e;
+  --color-cyan-500: #328787;
+  --color-cyan-600: #246b6b;
+  --color-cyan-700: #195252;
+  --color-cyan-900: #0b2b2b;
+  --color-cyan-950: #051717;
 
-  --color-gold-300: #e8d48a;
-  --color-gold-400: #d6b75a;
-  --color-gold-500: #c29d38;
-  --color-gold-900: #4a3b15;
-  --color-gold-950: #2e2510;
+  --color-gold-300: #eed68e;
+  --color-gold-400: #ddbf63;
+  --color-gold-500: #c5a43f;
+  --color-gold-600: #a9872a;
+  --color-gold-700: #88691b;
+  --color-gold-900: #463409;
+  --color-gold-950: #261c04;
+
+  --color-jade-400: #48a87b;
+  --color-jade-500: #338d62;
+  --color-jade-700: #1e593d;
 }
 
 @layer base {
   body {
-    @apply font-sans bg-ink-900 text-paper-100 overflow-hidden select-none;
+    @apply font-serif bg-ink-900 text-paper-100 overflow-hidden select-none;
+    letter-spacing: 0.05em;
   }
+}
+
+/* ── 古籍宣纸与印泥质感 ── */
+.paper-texture {
+  background-color: #f7f2e4;
+  background-image: 
+    radial-gradient(rgba(180, 155, 120, 0.15) 1px, transparent 0),
+    radial-gradient(rgba(140, 115, 80, 0.08) 1px, transparent 0);
+  background-size: 24px 24px, 48px 48px;
+  background-position: 0 0, 12px 12px;
+}
+
+.paper-dark-texture {
+  background-color: #15120e;
+  background-image: 
+    radial-gradient(rgba(218, 185, 130, 0.04) 1px, transparent 0),
+    radial-gradient(rgba(190, 60, 45, 0.03) 1px, transparent 0);
+  background-size: 28px 28px, 56px 56px;
+  background-position: 0 0, 14px 14px;
+}
+
+/* ── 朱砂印章效果 ── */
+.seal-stamp {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #b02b1f;
+  color: #b02b1f;
+  background: rgba(176, 43, 31, 0.08);
+  font-family: var(--font-calligraphy), serif;
+  box-shadow: inset 0 0 4px rgba(176, 43, 31, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  transform: rotate(-2deg);
+}
+
+.seal-stamp-green {
+  border: 2px solid #1e593d;
+  color: #1e593d;
+  background: rgba(30, 89, 61, 0.08);
+  font-family: var(--font-calligraphy), serif;
+  transform: rotate(2deg);
+}
+
+/* ── 金漆与琉璃描边 ── */
+.border-gold-ornate {
+  border: 1px solid rgba(221, 191, 99, 0.35);
+  box-shadow: 0 0 12px rgba(197, 164, 63, 0.12), inset 0 0 6px rgba(197, 164, 63, 0.08);
+}
+
+.border-vermilion-ornate {
+  border: 1px solid rgba(207, 58, 44, 0.4);
+  box-shadow: 0 0 12px rgba(207, 58, 44, 0.15), inset 0 0 6px rgba(207, 58, 44, 0.08);
+}
+
+/* ── 古风竖排文字 ── */
+.vertical-rl {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.25em;
 }
 
 /* ── 自定义滚动条 ── */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(20, 16, 12, 0.3);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(48, 143, 143, 0.3);
-  border-radius: 3px;
+  background: rgba(197, 164, 63, 0.3);
+  border-radius: 2px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(48, 143, 143, 0.5);
+  background: rgba(197, 164, 63, 0.6);
 }
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(48, 143, 143, 0.3) transparent;
+  scrollbar-color: rgba(197, 164, 63, 0.3) transparent;
 }
 
 /* ── 隐藏滚动条 ── */
@@ -85,16 +155,18 @@
   }
 }
 
-/* ── 手机模式模拟 ── 仅在宽屏（>470px）时显示手机边框效果 ── */
+/* ── 手机模式模拟 ── 仅在宽屏（>470px）时显示古典外框 ── */
 @media (min-width: 470px) {
   .phone-frame-outer {
-    padding: 1rem;
+    padding: 1.25rem;
   }
   .phone-frame {
-    border-radius: 2rem;
+    border-radius: 1.5rem;
+    border: 3px solid #3d3222;
     box-shadow:
-      0 0 0 3px #262626,
-      0 0 0 4px #0a0a0a,
-      0 20px 60px rgba(0, 0, 0, 0.5);
+      0 0 0 1px #1a150e,
+      0 0 0 6px #0c0a08,
+      0 25px 70px rgba(0, 0, 0, 0.8),
+      0 0 30px rgba(197, 164, 63, 0.08);
   }
 }

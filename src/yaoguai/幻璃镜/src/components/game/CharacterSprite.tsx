@@ -32,7 +32,7 @@ export const CharacterSprite: React.FC<CharacterSpriteProps> = ({ character, isV
                 transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
                 src={spriteUrl} 
                 alt={character.name} 
-                className="h-[90vh] max-h-[1000px] w-auto object-contain drop-shadow-[0_0_20px_rgba(0,0,0,0.5)] -mb-8" 
+                className="h-[90vh] max-h-250 w-auto object-contain drop-shadow-[0_0_20px_rgba(0,0,0,0.5)] -mb-8" 
               />
             ) : (
               <motion.div 
@@ -47,12 +47,12 @@ export const CharacterSprite: React.FC<CharacterSpriteProps> = ({ character, isV
                   <div className={`absolute top-1/4 w-[500px] h-[700px] rounded-[100%] blur-[120px] opacity-40 mix-blend-screen ${isCyan ? 'bg-cyan-500' : 'bg-vermilion-500'}`} />
                   
                   {/* Character Glassmorphic Monolith (Instead of a human figure, we use an abstract spiritual monolith) */}
-                  <div className={`relative w-[360px] h-[800px] rounded-t-[180px] border-t border-l border-r backdrop-blur-md bg-gradient-to-t shadow-[0_0_40px_rgba(0,0,0,0.8)]
+                  <div className={`relative w-[360px] h-[800px] rounded-t-[180px] border-t border-l border-r backdrop-blur-md bg-linear-to-t shadow-[0_0_40px_rgba(0,0,0,0.8)]
                     ${isCyan ? 'from-ink-900 via-cyan-900/40 to-cyan-400/10 border-cyan-400/30' : 'from-ink-900 via-vermilion-900/40 to-vermilion-400/10 border-vermilion-400/30'}
                     overflow-hidden flex flex-col items-center`}
                   >
                     {/* Inner glowing core line */}
-                    <div className={`absolute inset-y-0 w-[1px] ${isCyan ? 'bg-gradient-to-b from-transparent via-cyan-300 to-transparent' : 'bg-gradient-to-b from-transparent via-vermilion-300 to-transparent'} opacity-50 shadow-[0_0_15px_currentColor]`} />
+                    <div className={`absolute inset-y-0 w-[1px] ${isCyan ? 'bg-linear-to-b from-transparent via-cyan-300 to-transparent' : 'bg-linear-to-b from-transparent via-vermilion-300 to-transparent'} opacity-50 shadow-[0_0_15px_currentColor]`} />
                     
                     {/* Traditional geometric patterns overlay */}
                     <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at center, transparent 0, #0a0a0a 100%)' }} />

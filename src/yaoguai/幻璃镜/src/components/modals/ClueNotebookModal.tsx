@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Modal } from '../ui/Modal';
 import { useGameContext, CaseInfo, TruthTag } from '../../store/GameContext';
 import { ClueStatus } from '../../types';
-import { Search, Trash2, Link2, Edit2, Check, X, Maximize, Minimize, Plus, FolderPlus, Lock, Unlock, Loader2, Scroll, BookOpen, PenTool, XCircle, ChevronLeft, Stamp } from 'lucide-react';
+import { Search, Trash2, Link2, Edit2, Check, X, Plus, FolderPlus, Lock, Unlock, Loader2, Scroll, BookOpen, PenTool, XCircle, ChevronLeft, Stamp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useIsMobile } from '../../hooks';
 
 interface ClueNotebookModalProps {
   isOpen: boolean;
@@ -82,22 +83,22 @@ const PaperDialog: React.FC<{
       animate={{ scale: 1, y: 0, opacity: 1 }}
       exit={{ scale: 0.92, y: 15, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`relative ${wide ? 'max-w-lg' : 'max-w-md'} w-[calc(100%-2rem)] bg-[#f6efdc] rounded-sm p-7 shadow-[0_20px_60px_rgba(0,0,0,0.45)] ${vermilion ? 'max-h-[85vh]' : ''} overflow-y-auto custom-scrollbar`}
+      className={`relative ${wide ? 'max-w-lg' : 'max-w-md'} w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] bg-[#f6efdc] rounded-sm p-4 sm:p-7 shadow-[0_20px_60px_rgba(0,0,0,0.45)] ${vermilion ? 'max-h-[85vh]' : ''} overflow-y-auto custom-scrollbar`}
       style={{ border: '1px solid #8a7556', boxShadow: '0 20px 60px rgba(0,0,0,0.45), inset 0 0 0 4px #f6efdc, inset 0 0 0 5px #c9b68b' }}
       onClick={e => e.stopPropagation()}
     >
       {/* 函套顶饰：素带 + 朱心 */}
-      <div className="absolute top-[5px] left-[5px] right-[5px] h-[3px] flex items-center pointer-events-none">
+      <div className="absolute top-1.25 left-1.25 right-1.25 h-0.75 flex items-center pointer-events-none">
         <div className={`flex-1 h-px ${vermilion ? 'bg-vermilion-700/50' : 'bg-[#a89370]/60'}`} />
         <div className={`w-1.5 h-1.5 rotate-45 ${vermilion ? 'bg-vermilion-700/60' : 'bg-[#8a7556]/60'}`} />
         <div className={`flex-1 h-px ${vermilion ? 'bg-vermilion-700/50' : 'bg-[#a89370]/60'}`} />
       </div>
       {/* 标题 */}
-      <div className="flex items-center justify-between gap-3 mb-5 pb-3 border-b border-[#c9b68b]">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className={`font-serif text-[15px] ${vermilion ? 'text-vermilion-700' : 'text-[#8a7556]'}`}>◆</span>
-          <h3 className={`font-serif text-[19px] font-bold tracking-[0.3em] ${vermilion ? 'text-vermilion-800' : 'text-[#241d0f]'}`}>{title}</h3>
-          <span className={`font-serif text-[15px] ${vermilion ? 'text-vermilion-700' : 'text-[#8a7556]'}`}>◆</span>
+      <div className="flex items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-5 pb-2 sm:pb-3 border-b border-[#c9b68b]">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <span className={`font-serif text-[13px] sm:text-[15px] ${vermilion ? 'text-vermilion-700' : 'text-paper-600'} shrink-0`}>◆</span>
+          <h3 className={`font-serif text-[15px] sm:text-[19px] font-bold tracking-[0.15em] sm:tracking-[0.3em] ${vermilion ? 'text-vermilion-800' : 'text-[#241d0f]'} truncate`}>{title}</h3>
+          <span className={`font-serif text-[13px] sm:text-[15px] ${vermilion ? 'text-vermilion-700' : 'text-paper-600'} hidden sm:inline`}>◆</span>
         </div>
         {onClose && (
           <button onClick={onClose} className="text-[#6d5b3d] hover:text-vermilion-700 hover:bg-vermilion-700/10 transition-all p-1 rounded-sm shrink-0" title="关闭">
@@ -119,6 +120,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
   } = useGameContext();
 
   // 视图层级：'shelf' = 卷宗架首页，'detail' = 展卷详情
+  // 点进具体案件时默认全屏
   const [view, setView] = useState<'shelf' | 'detail'>('shelf');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -129,8 +131,14 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
   const [newCaseName, setNewCaseName] = useState('');
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
 
-  // 横竖排切换
+  // 横竖排切换（手机端强制横排文字，但布局仍为上下分区）
+  const isMobile = useIsMobile();
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('vertical');
+  // 手机端：文字横排，但布局上下（线索上、推论下），不左右并排
+  const effectiveLayoutMode = isMobile ? 'horizontal' : layoutMode;
+
+  // 手机端详情视图：单页三视图切换（线索总览 → 推论总览 → 逻辑链）
+  const [mobileTab, setMobileTab] = useState<'clues' | 'deductions' | 'chain'>('clues');
 
   // 线索组合
   const [selectedClues, setSelectedClues] = useState<string[]>([]);
@@ -173,6 +181,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
   const openCaseDetail = (caseId: string) => {
     setActiveCaseId(caseId);
     setView('detail');
+    setIsFullScreen(true); // 点进具体案件默认全屏
   };
 
   // ── 返回卷宗架 ──
@@ -180,6 +189,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
     setView('shelf');
     setActiveCaseId(null);
     setSelectedClues([]);
+    setIsFullScreen(false); // 返回卷宗架时退出全屏
   };
 
   // ── 案件创建 ──
@@ -190,6 +200,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
     setShowNewCaseForm(false);
     setNewCaseName('');
     setView('detail');
+    setIsFullScreen(true); // 新建案件也默认全屏
   };
 
   // ── 线索选择 ──
@@ -322,10 +333,10 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
             }} />
 
           {/* 包背装订边（左侧）+ 四眼线装线迹 */}
-          <div className="absolute left-0 top-0 bottom-0 w-[11px]"
+          <div className="absolute left-0 top-0 bottom-0 w-2.75"
             style={{ background: isClosed ? 'linear-gradient(to right, #96793f, #a88a4d)' : 'linear-gradient(to right, #1b2743, #222f52)' }} />
           {[10, 34, 62, 88].map(t => (
-            <div key={t} className="absolute left-[3px] w-[7px] h-[7px] rounded-full pointer-events-none"
+            <div key={t} className="absolute left-0.75 w-1.75 h-1.75 rounded-full pointer-events-none"
               style={{
                 top: `${t}%`,
                 background: 'radial-gradient(circle, #e8dcbb 0 1.5px, rgba(232,220,187,0.4) 1.5px 3px, transparent 3px)',
@@ -333,7 +344,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
           ))}
 
           {/* 题签（竖排书名条，双线框） */}
-          <div className="absolute left-[26px] top-[15px] rounded-[2px] px-2 pt-2 pb-3"
+          <div className="absolute left-6.5 top-3.75 rounded-xs px-2 pt-2 pb-3"
             style={{
               background: 'linear-gradient(180deg, #f7f0da, #efe6cb)',
               border: '1px solid #b7a67d',
@@ -351,7 +362,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
           </div>
 
           {/* 书根：线索/推论计数与立案日期 */}
-          <div className="absolute bottom-0 inset-x-0 h-[38px] flex flex-col items-center justify-center gap-[3px]"
+          <div className="absolute bottom-0 inset-x-0 h-9.5 flex flex-col items-center justify-center gap-0.75"
             style={{ background: isClosed ? 'rgba(88,68,32,0.22)' : 'rgba(13,19,34,0.6)' }}>
             <span className={`font-sans text-[12px] font-bold tracking-[0.18em] ${isClosed ? 'text-[#3d2f16]' : 'text-[#eee4c6]'}`}>
               线索{clueCount} · 推论{dedCount}
@@ -364,10 +375,10 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
           {/* 已结封条（斜贴骑缝） */}
           {isClosed && (
             <div className="absolute inset-0 pointer-events-none z-20">
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[24deg] flex items-center gap-2 px-4 py-1.5"
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-24deg] flex items-center gap-2 px-4 py-1.5"
                 style={{ background: 'rgba(247,240,218,0.97)', border: '1.5px solid #9c2a1e', boxShadow: '0 2px 10px rgba(40,25,10,0.35)' }}>
                 <span className="font-serif text-[21px] font-bold text-[#8f1f14] tracking-[0.4em] pl-[0.4em]">已结</span>
-                <span className="font-serif text-[12px] font-bold text-[#8f1f14] border border-[#8f1f14] px-1 py-[1px] rotate-[8deg]">验讫</span>
+                <span className="font-serif text-[12px] font-bold text-[#8f1f14] border border-[#8f1f14] px-1 py-px rotate-[8deg]">验讫</span>
               </div>
             </div>
           )}
@@ -382,7 +393,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
           {/* 删卷按钮（悬停显示，左下角） */}
           <button
             onClick={(e) => { e.stopPropagation(); setDeletingCase(ci); }}
-            className="absolute bottom-[42px] left-1 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center w-6 h-6 rounded-full bg-vermilion-700/90 border border-vermilion-800 text-[#fff1e4] hover:bg-vermilion-800 hover:scale-110 shadow-md"
+            className="absolute bottom-10.5 left-1 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center w-6 h-6 rounded-full bg-vermilion-700/90 border border-vermilion-800 text-[#fff1e4] hover:bg-vermilion-800 hover:scale-110 shadow-md"
             title="焚毁案卷"
           >
             <Trash2 size={12} />
@@ -390,7 +401,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
         </motion.div>
 
         {/* ── 木搁板 ── */}
-        <div className="mx-auto mt-[6px] rounded-[2px]"
+        <div className="mx-auto mt-1.5 rounded-xs"
           style={{
             width: '196px',
             height: '9px',
@@ -409,7 +420,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
     const isDeduction = clue.type === 'deduction';
     const dStatus = (clue.status || 'pending') as ClueStatus;
     const isReadOnly = currentCase?.status === 'closed';
-    const vertical = layoutMode === 'vertical';
+    const vertical = effectiveLayoutMode === 'vertical';
 
     const statusActiveCls: Record<ClueStatus, string> = {
       'pending': 'bg-[#4c4132] text-[#f2e9d2] border-[#33291a]',
@@ -447,7 +458,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
         )}
 
         {/* 类别章（线索·青 / 推论·朱） */}
-        <div className={`absolute top-2 left-2 px-2 py-[3px] text-[12px] font-serif font-bold tracking-[0.2em] rounded-[2px] pointer-events-none z-10 border ${
+        <div className={`absolute top-2 left-2 px-2 py-0.75 text-[12px] font-serif font-bold tracking-[0.2em] rounded-xs pointer-events-none z-10 border ${
           isDeduction
             ? 'bg-vermilion-700 text-[#fff1e4] border-vermilion-800'
             : 'bg-cyan-700 text-[#eaf4f1] border-cyan-900'
@@ -468,7 +479,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
                 <button
                   key={s}
                   onClick={(e) => { e.stopPropagation(); updateDeductionStatus(clue.id, s); }}
-                  className={`px-2 py-[3px] text-[13px] font-sans font-bold tracking-wider rounded-[2px] border transition-all ${
+                  className={`px-2 py-0.75 text-[13px] font-sans font-bold tracking-wider rounded-xs border transition-all ${
                     dStatus === s
                       ? statusActiveCls[s]
                       : 'bg-[#f0e8d3] text-[#6d5b3d] border-[#c9b68b] hover:border-[#8a7556] hover:text-[#3d3018]'
@@ -484,7 +495,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
 
         {/* 正文 */}
         <HorizontalScroller
-          layoutMode={layoutMode}
+          layoutMode={effectiveLayoutMode}
           allowVerticalScroll={isInDeductionMode}
           className={`font-serif text-[17px] relative z-10 text-[#2a2317] ${
             vertical ? 'leading-[2.2] tracking-[0.08em] flex-1 overflow-x-auto h-[68%] custom-scrollbar' : 'leading-[1.85] tracking-[0.04em]'
@@ -499,7 +510,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
         {/* 状态水印（装饰，不承担可读信息） */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 opacity-[0.05]">
           <span className={`font-serif font-black text-[64px] -rotate-12 select-none ${
-            dStatus === 'true' ? 'text-vermilion-700' : dStatus === 'false' ? 'text-[#525252]' : 'text-[#8c7a56]'
+            dStatus === 'true' ? 'text-vermilion-700' : dStatus === 'false' ? 'text-ink-500' : 'text-[#8c7a56]'
           }`}>
             {dStatus === 'true' ? '属实' : dStatus === 'false' ? '伪证' : '待勘'}
           </span>
@@ -517,7 +528,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
         {dStatus === 'true' && (
           <div className={`absolute pointer-events-none z-10 ${vertical ? 'left-3 bottom-12' : 'right-4 bottom-9'}`}>
             <div className="relative rotate-[-10deg]">
-              <div className="border-[3px] border-vermilion-700/35 rounded-[4px] px-2 py-1">
+              <div className="border-[3px] border-vermilion-700/35 rounded-sm px-2 py-1">
                 <span className="font-serif text-[22px] font-black text-vermilion-700/45 tracking-[0.15em] select-none">属实</span>
               </div>
             </div>
@@ -572,7 +583,6 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
       title="钦 天 监 · 御 览 密 奏"
       id="clue-notebook-modal"
       fullScreen={isFullScreen}
-      onToggleFullScreen={() => setIsFullScreen(!isFullScreen)}
       variant="blank"
     >
       <div className={`absolute inset-0 bg-[#ece2ca] text-[#2a2317] flex flex-col overflow-hidden ${isFullScreen ? '' : 'border-4 border-[#4a3826] rounded-sm'}`}
@@ -601,7 +611,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {view === 'detail' && (
+            {view === 'detail' && !isMobile && (
               <button
                 onClick={() => setLayoutMode(prev => prev === 'horizontal' ? 'vertical' : 'horizontal')}
                 className="mr-1 px-3.5 py-1.5 bg-[#5c4830] border border-[#7a5f40] text-[#f0e5c6] text-[13px] font-sans font-bold tracking-widest hover:bg-[#6d5538] hover:border-[#9c7d55] rounded-sm transition-all shadow-sm"
@@ -611,13 +621,6 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
                 {layoutMode === 'horizontal' ? '竖排' : '横排'}
               </button>
             )}
-            <button
-              onClick={() => setIsFullScreen(!isFullScreen)}
-              className="p-2 text-[#e8dcbb] hover:text-[#fff7e2] hover:bg-[#5c4830] transition-all rounded-sm border border-transparent hover:border-[#7a5f40]"
-              title={isFullScreen ? "退出全屏" : "全屏查看"}
-            >
-              {isFullScreen ? <Minimize size={18} /> : <Maximize size={18} />}
-            </button>
             <button
               onClick={onClose}
               className="p-2 text-[#e8dcbb] hover:text-[#ffb4a6] hover:bg-vermilion-800/40 transition-all rounded-sm border border-transparent hover:border-vermilion-700"
@@ -659,7 +662,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
                     <h3 className="font-serif text-[17px] font-bold tracking-[0.25em] text-[#f2e7c9]">正在调查</h3>
                   </div>
                   <span className="font-sans text-[13px] font-bold text-[#4a3a22] bg-[#e3d7ba] border border-[#b9a67e] rounded-full px-2.5 py-0.5">{activeCases.length}</span>
-                  <div className="flex-1 min-w-[40px] h-[2px]" style={{ background: 'linear-gradient(to right, #a89370, transparent)' }} />
+                  <div className="flex-1 min-w-10 h-0.5" style={{ background: 'linear-gradient(to right, #a89370, transparent)' }} />
                   <button onClick={() => setShowNewCaseForm(true)}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#f6efdc] border border-dashed border-[#8a7556] text-[#4a3a22] hover:border-vermilion-600 hover:text-vermilion-700 hover:bg-[#fdf7e4] transition-all text-[13px] font-sans font-bold tracking-[0.2em] rounded-sm shadow-sm">
                     <FolderPlus size={15} /> 新立案
@@ -691,7 +694,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
                       <h3 className="font-serif text-[17px] font-bold tracking-[0.25em] text-[#f2e7c9]">已结归档</h3>
                     </div>
                     <span className="font-sans text-[13px] font-bold text-[#4a3a22] bg-[#e3d7ba] border border-[#b9a67e] rounded-full px-2.5 py-0.5">{closedCases.length}</span>
-                    <div className="flex-1 min-w-[40px] h-[2px]" style={{ background: 'linear-gradient(to right, #a89370, transparent)' }} />
+                    <div className="flex-1 min-w-10 h-0.5" style={{ background: 'linear-gradient(to right, #a89370, transparent)' }} />
                   </div>
 
                   <div className="flex gap-x-6 gap-y-3 flex-wrap justify-start">
@@ -712,132 +715,354 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
             </motion.div>
           ) : (
             /* ══════════════════════════════════════════════════════════
-               第二层：展卷详情（双页布局）
+               第二层：展卷详情
+               · 电脑端：双页布局（线索 | 推论）
+               · 手机端：单页三视图切换（线索总览 → 推论总览 → 逻辑链）
             ══════════════════════════════════════════════════════════ */
             <motion.div
               key="detail"
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -30 }}
-              className={`flex-1 flex flex-col ${layoutMode === 'vertical' ? 'md:flex-row-reverse' : 'md:flex-row'} relative z-10 min-h-0`}
+              className="flex-1 flex flex-col relative z-10 min-h-0"
             >
-              {/* ════ 左页：案牍卷宗（线索） ════ */}
-              <div className={`w-full md:w-1/2 h-full flex flex-col relative ${layoutMode === 'vertical' ? 'border-l-2' : 'border-r-2'} border-[#b9a67e] bg-[#e8dfc6] shrink-0 min-h-0`}>
-                <div className="p-3.5 border-b-2 border-[#b9a67e] bg-[#ddd0b2] flex justify-between items-center shrink-0 gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="p-1.5 rounded-[3px] bg-[#3a2c1c] text-[#e8dcbb] shrink-0"><Scroll size={17} /></span>
-                    <h3 className="font-serif text-[17px] font-bold tracking-[0.2em] text-[#241d0f] truncate">案牍卷宗</h3>
-                  </div>
-                  <span className="text-[13px] font-sans font-bold text-[#4a3a22] bg-[#ece2ca] border border-[#b9a67e] rounded-full px-2.5 py-0.5 shrink-0">共 {baseClues.length} 卷</span>
-                </div>
-
-                <HorizontalScroller
-                  layoutMode={layoutMode}
-                  allowVerticalScroll={isInDeductionMode}
-                  className={`flex-1 overflow-y-auto custom-scrollbar p-4 pb-20 ${layoutMode === 'vertical' ? 'flex flex-row overflow-x-auto overflow-y-hidden gap-4' : 'space-y-4'}`}
-                >
-                  {baseClues.length === 0 ? (
-                    <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-4">
-                      <BookOpen size={44} className="opacity-50" />
-                      <p className="tracking-[0.2em] text-[15px] font-bold text-[#4a3a22]" style={{ writingMode: layoutMode === 'vertical' ? 'vertical-rl' : 'horizontal-tb' }}>
-                        {currentCase?.status === 'closed' ? '此案已结，无线索记录' : '尚无线索，请在正文中选词收集'}
-                      </p>
-                    </div>
-                  ) : (
-                    <AnimatePresence>
-                      {baseClues.map(clue => renderClueCard(clue))}
-                    </AnimatePresence>
-                  )}
-                </HorizontalScroller>
-
-                {/* 底部操作栏（仅进行中案件） */}
-                {currentCase?.status === 'active' && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-40 flex-wrap justify-center max-w-[92%] px-3 py-2 rounded-full"
-                    style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
-                    <button onClick={(e) => { e.stopPropagation(); setShowManualClue(true); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-[#8a7556] rounded-full text-[#3a2f1c] hover:bg-[#fdf7e4] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
-                      <Plus size={14} /> 线索
-                    </button>
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${
-                      selectedClues.length === 2 ? 'bg-vermilion-700 border-vermilion-800 text-[#fff1e4] shadow-[0_0_14px_rgba(214,61,46,0.5)]' : 'bg-[#5c4830] border-[#7a5f40] text-[#e8dcbb]'
-                    }`}>
-                      <span className="font-sans text-[13px] font-bold tracking-widest">已选 {selectedClues.length}/2</span>
-                      <button disabled={selectedClues.length !== 2 || isCombining} onClick={(e) => { e.stopPropagation(); handleCombine(); }}
-                        className="flex items-center gap-1.5 font-sans text-[13px] font-bold tracking-widest disabled:opacity-40">
-                        {isCombining ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={15} />}
-                        {isCombining ? '推演中' : '红线连结'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ════ 右页：勘合定谳（推论） ════ */}
-              <div className="w-full md:w-1/2 h-full flex flex-col relative bg-[#f2ead6] min-h-0">
-                <div className="p-3.5 border-b-2 border-[#b9a67e] bg-[#e6dac0] flex justify-between items-center shrink-0 gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="px-2 py-1 rounded-[2px] bg-vermilion-700 text-[#fff1e4] font-serif text-[13px] font-bold tracking-widest shadow-sm shrink-0">密奏</span>
-                    <h3 className="font-serif text-[17px] font-bold tracking-[0.2em] text-[#241d0f] truncate">臣勘合定谳</h3>
-                  </div>
-                  {currentCase?.status === 'active' && (
+              {/* ════ 手机端：三视图切换条 ════ */}
+              {isMobile && (
+                <div className="shrink-0 flex items-center gap-1 px-3 py-2 bg-[#ddd0b2]">
+                  {([
+                    { key: 'clues', label: '线索总览', icon: '◇' },
+                    { key: 'deductions', label: '推论总览', icon: '◈' },
+                    { key: 'chain', label: '逻辑链', icon: '※' },
+                  ] as const).map(tab => (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowManualDeduction(true); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-vermilion-800 font-sans font-bold border border-vermilion-700/50 rounded-full hover:bg-vermilion-700/10 hover:border-vermilion-700 transition-all text-[13px] tracking-widest bg-[#f6efdc] shadow-sm shrink-0"
+                      key={tab.key}
+                      onClick={(e) => { e.stopPropagation(); setMobileTab(tab.key); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-sm font-sans text-[12px] font-bold tracking-widest transition-all ${
+                        mobileTab === tab.key
+                          ? 'bg-[#3a2c1c] text-[#f0e5c6] shadow-sm'
+                          : 'text-[#4a3a22] hover:bg-[#c9b998]/40'
+                      }`}
                     >
-                      <PenTool size={15} />
-                      亲笔朱批
+                      <span className="text-[#d6b75a] text-[11px]">{tab.icon}</span>
+                      {tab.label}
                     </button>
+                  ))}
+                </div>
+              )}
+
+              {/* ════ 电脑端：双页布局容器 ════ */}
+              <div className={`flex-1 flex flex-col ${effectiveLayoutMode === 'vertical' ? 'md:flex-row-reverse' : 'md:flex-row'} min-h-0 ${isMobile ? 'hidden' : ''}`}>
+                {/* ── 左页：案牍卷宗（线索） ── */}
+                <div className={`w-full md:w-1/2 h-1/2 md:h-full flex flex-col relative ${effectiveLayoutMode === 'vertical' ? 'md:border-l-2' : 'md:border-r-2'} border-b-2 md:border-b-0 border-[#b9a67e] bg-[#e8dfc6] shrink-0 min-h-0`}>
+                  <div className="p-3.5 border-b-2 border-[#b9a67e] bg-[#ddd0b2] flex justify-between items-center shrink-0 gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="p-1.5 rounded-[3px] bg-[#3a2c1c] text-[#e8dcbb] shrink-0"><Scroll size={17} /></span>
+                      <h3 className="font-serif text-[17px] font-bold tracking-[0.2em] text-[#241d0f] truncate">案牍卷宗</h3>
+                    </div>
+                    <span className="text-[13px] font-sans font-bold text-[#4a3a22] bg-[#ece2ca] border border-[#b9a67e] rounded-full px-2.5 py-0.5 shrink-0">共 {baseClues.length} 卷</span>
+                  </div>
+
+                  <HorizontalScroller
+                    layoutMode={effectiveLayoutMode}
+                    allowVerticalScroll={isInDeductionMode}
+                    className={`flex-1 overflow-y-auto custom-scrollbar p-4 pb-20 ${effectiveLayoutMode === 'vertical' ? 'flex flex-row overflow-x-auto overflow-y-hidden gap-4' : 'space-y-4'}`}
+                  >
+                    {baseClues.length === 0 ? (
+                      <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-4">
+                        <BookOpen size={44} className="opacity-50" />
+                        <p className="tracking-[0.2em] text-[15px] font-bold text-[#4a3a22]" style={{ writingMode: effectiveLayoutMode === 'vertical' ? 'vertical-rl' : 'horizontal-tb' }}>
+                          {currentCase?.status === 'closed' ? '此案已结，无线索记录' : '尚无线索，请在正文中选词收集'}
+                        </p>
+                      </div>
+                    ) : (
+                      <AnimatePresence>
+                        {baseClues.map(clue => renderClueCard(clue))}
+                      </AnimatePresence>
+                    )}
+                  </HorizontalScroller>
+
+                  {/* 底部操作栏（仅进行中案件） */}
+                  {currentCase?.status === 'active' && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-40 flex-wrap justify-center max-w-[92%] px-3 py-2 rounded-full"
+                      style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
+                      <button onClick={(e) => { e.stopPropagation(); setShowManualClue(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-[#8a7556] rounded-full text-[#3a2f1c] hover:bg-[#fdf7e4] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
+                        <Plus size={14} /> 线索
+                      </button>
+                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full border transition-all ${
+                        selectedClues.length === 2 ? 'bg-vermilion-700 border-vermilion-800 text-[#fff1e4] shadow-[0_0_14px_rgba(214,61,46,0.5)]' : 'bg-[#5c4830] border-[#7a5f40] text-[#e8dcbb]'
+                      }`}>
+                        <span className="font-sans text-[13px] font-bold tracking-widest">已选 {selectedClues.length}/2</span>
+                        <button disabled={selectedClues.length !== 2 || isCombining} onClick={(e) => { e.stopPropagation(); handleCombine(); }}
+                          className="flex items-center gap-1.5 font-sans text-[13px] font-bold tracking-widest disabled:opacity-40">
+                          {isCombining ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={15} />}
+                          {isCombining ? '推演中' : '红线连结'}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                <HorizontalScroller
-                  layoutMode={layoutMode}
-                  allowVerticalScroll={isInDeductionMode}
-                  className={`flex-1 overflow-y-auto custom-scrollbar p-5 pb-20 ${layoutMode === 'vertical' ? 'flex flex-row overflow-x-auto overflow-y-hidden gap-5' : 'space-y-5'}`}
-                >
-                  {deductions.length === 0 ? (
-                    <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-4">
-                      <BookOpen size={44} className="opacity-50" />
-                      <p className="tracking-[0.2em] text-[15px] font-bold text-[#4a3a22] max-w-[280px] text-center" style={{ writingMode: layoutMode === 'vertical' ? 'vertical-rl' : 'horizontal-tb' }}>
-                        {currentCase?.status === 'closed' ? '此案已结，无推论记录' : '尚无推演定论，请于左页择取两卷线索，方可提笔'}
-                      </p>
+                {/* ── 右页：勘合定谳（推论） ── */}
+                <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col relative bg-[#f2ead6] min-h-0">
+                  <div className="p-3.5 border-b-2 border-[#b9a67e] bg-[#e6dac0] flex justify-between items-center shrink-0 gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="px-2 py-1 rounded-xs bg-vermilion-700 text-[#fff1e4] font-serif text-[13px] font-bold tracking-widest shadow-sm shrink-0">密奏</span>
+                      <h3 className="font-serif text-[17px] font-bold tracking-[0.2em] text-[#241d0f] truncate">臣勘合定谳</h3>
                     </div>
-                  ) : (
-                    <AnimatePresence>
-                      {deductions.map(deduction => renderClueCard(deduction))}
-                    </AnimatePresence>
-                  )}
-                </HorizontalScroller>
+                    {currentCase?.status === 'active' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowManualDeduction(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-vermilion-800 font-sans font-bold border border-vermilion-700/50 rounded-full hover:bg-vermilion-700/10 hover:border-vermilion-700 transition-all text-[13px] tracking-widest bg-[#f6efdc] shadow-sm shrink-0"
+                      >
+                        <PenTool size={15} />
+                        亲笔朱批
+                      </button>
+                    )}
+                  </div>
 
-                {/* 案件状态操作 */}
-                <div className="absolute bottom-4 right-4 z-40 flex items-center gap-2 px-2.5 py-2 rounded-full"
-                  style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
-                  {currentCase?.status === 'active' ? (
-                    <button onClick={(e) => { e.stopPropagation(); startCloseCase(currentCase); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-vermilion-700 rounded-full text-vermilion-800 hover:bg-[#ffe9d9] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
-                      <Lock size={14} /> 结案
-                    </button>
-                  ) : currentCase && (
-                    <>
-                      <button onClick={(e) => { e.stopPropagation(); reopenCase(currentCase.id); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-cyan-700/60 rounded-full text-cyan-700 hover:bg-[#e2f0ee] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
-                        <Unlock size={14} /> 重开
+                  <HorizontalScroller
+                    layoutMode={effectiveLayoutMode}
+                    allowVerticalScroll={isInDeductionMode}
+                    className={`flex-1 overflow-y-auto custom-scrollbar p-5 pb-20 ${effectiveLayoutMode === 'vertical' ? 'flex flex-row overflow-x-auto overflow-y-hidden gap-5' : 'space-y-5'}`}
+                  >
+                    {deductions.length === 0 ? (
+                      <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-4">
+                        <BookOpen size={44} className="opacity-50" />
+                        <p className="tracking-[0.2em] text-[15px] font-bold text-[#4a3a22] max-w-70 text-center" style={{ writingMode: effectiveLayoutMode === 'vertical' ? 'vertical-rl' : 'horizontal-tb' }}>
+                          {currentCase?.status === 'closed' ? '此案已结，无推论记录' : '尚无推演定论，请于左页择取两卷线索，方可提笔'}
+                        </p>
+                      </div>
+                    ) : (
+                      <AnimatePresence>
+                        {deductions.map(deduction => renderClueCard(deduction))}
+                      </AnimatePresence>
+                    )}
+                  </HorizontalScroller>
+
+                  {/* 案件状态操作 */}
+                  <div className="absolute bottom-4 right-4 z-40 flex items-center gap-2 px-2.5 py-2 rounded-full"
+                    style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
+                    {currentCase?.status === 'active' ? (
+                      <button onClick={(e) => { e.stopPropagation(); startCloseCase(currentCase); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-vermilion-700 rounded-full text-vermilion-800 hover:bg-[#ffe9d9] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
+                        <Lock size={14} /> 结案
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); setDeletingCase(currentCase); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-vermilion-700/40 rounded-full text-vermilion-700 hover:bg-[#ffe9d9] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
-                        <Trash2 size={14} /> 焚卷
-                      </button>
-                    </>
-                  )}
+                    ) : currentCase && (
+                      <>
+                        <button onClick={(e) => { e.stopPropagation(); reopenCase(currentCase.id); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-cyan-700/60 rounded-full text-cyan-700 hover:bg-[#e2f0ee] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
+                          <Unlock size={14} /> 重开
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeletingCase(currentCase); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f2e9d2] border border-vermilion-700/40 rounded-full text-vermilion-700 hover:bg-[#ffe9d9] transition-all text-[13px] font-sans font-bold tracking-widest shadow-sm">
+                          <Trash2 size={14} /> 焚卷
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
-            </motion.div>
+
+              {/* ════ 手机端：单页三视图内容 ════ */}
+              {isMobile && (
+                <div className="flex-1 flex flex-col min-h-0 relative">
+                  {/* ── Tab 1: 线索总览 ── */}
+                  {mobileTab === 'clues' && (
+                    <div className="flex-1 flex flex-col bg-[#e8dfc6] min-h-0">
+                      <div className="p-3 border-b-2 border-[#b9a67e] bg-[#ddd0b2] flex justify-between items-center shrink-0 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="p-1.5 rounded-[3px] bg-[#3a2c1c] text-[#e8dcbb] shrink-0"><Scroll size={16} /></span>
+                          <h3 className="font-serif text-[15px] font-bold tracking-[0.2em] text-[#241d0f] truncate">案牍卷宗</h3>
+                        </div>
+                        <span className="text-[12px] font-sans font-bold text-[#4a3a22] bg-[#ece2ca] border border-[#b9a67e] rounded-full px-2 py-0.5 shrink-0">共 {baseClues.length} 卷</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 pb-24 space-y-3">
+                        {baseClues.length === 0 ? (
+                          <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-3">
+                            <BookOpen size={40} className="opacity-50" />
+                            <p className="tracking-[0.2em] text-[14px] font-bold text-[#4a3a22] text-center">
+                              {currentCase?.status === 'closed' ? '此案已结，无线索记录' : '尚无线索，请在正文中选词收集'}
+                            </p>
+                          </div>
+                        ) : (
+                          <AnimatePresence>
+                            {baseClues.map(clue => renderClueCard(clue))}
+                          </AnimatePresence>
+                        )}
+                      </div>
+                      {/* 底部操作栏 */}
+                      {currentCase?.status === 'active' && (
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 z-40 px-2.5 py-1.5 rounded-full"
+                          style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
+                          <button onClick={(e) => { e.stopPropagation(); setShowManualClue(true); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#f2e9d2] border border-[#8a7556] rounded-full text-[#3a2f1c] hover:bg-[#fdf7e4] transition-all text-[12px] font-sans font-bold tracking-widest shadow-sm">
+                            <Plus size={14} /> 线索
+                          </button>
+                          <button disabled={selectedClues.length !== 2 || isCombining} onClick={(e) => { e.stopPropagation(); handleCombine(); }}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border font-sans text-[12px] font-bold tracking-widest transition-all disabled:opacity-40 ${
+                              selectedClues.length === 2
+                                ? 'bg-vermilion-700 border-vermilion-800 text-[#fff1e4] shadow-[0_0_14px_rgba(214,61,46,0.5)]'
+                                : 'bg-[#5c4830] border-[#7a5f40] text-[#e8dcbb]'
+                            }`}>
+                            {isCombining ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={15} />}
+                            {isCombining ? '推演中' : `连结 ${selectedClues.length}/2`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Tab 2: 推论总览 ── */}
+                  {mobileTab === 'deductions' && (
+                    <div className="flex-1 flex flex-col bg-[#f2ead6] min-h-0">
+                      <div className="p-3 border-b-2 border-[#b9a67e] bg-[#e6dac0] flex justify-between items-center shrink-0 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="px-2 py-1 rounded-xs bg-vermilion-700 text-[#fff1e4] font-serif text-[12px] font-bold tracking-widest shadow-sm shrink-0">密奏</span>
+                          <h3 className="font-serif text-[15px] font-bold tracking-[0.2em] text-[#241d0f] truncate">臣勘合定谳</h3>
+                        </div>
+                        {currentCase?.status === 'active' && (
+                          <button onClick={(e) => { e.stopPropagation(); setShowManualDeduction(true); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 text-vermilion-800 font-sans font-bold border border-vermilion-700/50 rounded-full hover:bg-vermilion-700/10 hover:border-vermilion-700 transition-all text-[12px] tracking-widest bg-[#f6efdc] shadow-sm shrink-0">
+                            <PenTool size={14} /> 朱批
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 pb-24 space-y-3">
+                        {deductions.length === 0 ? (
+                          <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-3">
+                            <BookOpen size={40} className="opacity-50" />
+                            <p className="tracking-[0.2em] text-[14px] font-bold text-[#4a3a22] text-center max-w-60">
+                              {currentCase?.status === 'closed' ? '此案已结，无推论记录' : '尚无推演定论，请于线索页择取两卷线索，方可提笔'}
+                            </p>
+                          </div>
+                        ) : (
+                          <AnimatePresence>
+                            {deductions.map(deduction => renderClueCard(deduction))}
+                          </AnimatePresence>
+                        )}
+                      </div>
+                      {/* 案件状态操作 */}
+                      <div className="absolute bottom-3 right-3 z-40 flex items-center gap-2 px-2.5 py-1.5 rounded-full"
+                        style={{ background: 'rgba(58,44,24,0.92)', boxShadow: '0 4px 16px rgba(20,14,6,0.4)' }}>
+                        {currentCase?.status === 'active' ? (
+                          <button onClick={(e) => { e.stopPropagation(); startCloseCase(currentCase); }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f2e9d2] border border-vermilion-700 rounded-full text-vermilion-800 hover:bg-[#ffe9d9] transition-all text-[12px] font-sans font-bold tracking-widest shadow-sm">
+                            <Lock size={13} /> 结案
+                          </button>
+                        ) : currentCase && (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); reopenCase(currentCase.id); }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f2e9d2] border border-cyan-700/60 rounded-full text-cyan-700 hover:bg-[#e2f0ee] transition-all text-[12px] font-sans font-bold tracking-widest shadow-sm">
+                              <Unlock size={13} /> 重开
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setDeletingCase(currentCase); }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f2e9d2] border border-vermilion-700/40 rounded-full text-vermilion-700 hover:bg-[#ffe9d9] transition-all text-[12px] font-sans font-bold tracking-widest shadow-sm">
+                              <Trash2 size={13} /> 焚卷
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Tab 3: 逻辑链（古风文字式推理脉络） ── */}
+                  {mobileTab === 'chain' && (
+                    <div className="flex-1 flex flex-col bg-[#ede3cb] min-h-0">
+                      <div className="p-3 border-b-2 border-[#b9a67e] bg-[#ddd0b2] flex justify-between items-center shrink-0 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="px-2 py-1 rounded-xs bg-[#3a2c1c] text-[#e8dcbb] font-serif text-[12px] font-bold tracking-widest shadow-sm shrink-0">脉络</span>
+                          <h3 className="font-serif text-[15px] font-bold tracking-[0.2em] text-[#241d0f] truncate">推理逻辑链</h3>
+                        </div>
+                        <span className="text-[12px] font-sans font-bold text-[#4a3a22] bg-[#ece2ca] border border-[#b9a67e] rounded-full px-2 py-0.5 shrink-0">共 {deductions.length} 条</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pb-24">
+                        {deductions.length === 0 ? (
+                          <div className="h-full w-full flex flex-col items-center justify-center text-[#6d5b3d] font-serif gap-3">
+                            <BookOpen size={40} className="opacity-50" />
+                            <p className="tracking-[0.2em] text-[14px] font-bold text-[#4a3a22] text-center max-w-60">
+                              {currentCase?.status === 'closed' ? '此案已结，无推理脉络' : '尚无推演定论，逻辑链待续'}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-4">
+                            {deductions.map((ded, idx) => {
+                              const sourceClues = (ded.sourceClueIds || [])
+                                .map(sid => clues.find(c => c.id === sid))
+                                .filter(Boolean) as typeof baseClues;
+                              const dStatus = (ded.status || 'pending') as ClueStatus;
+                              return (
+                                <div key={ded.id} className="relative bg-[#f6efdc] border border-[#c9b998] rounded-sm p-4 shadow-sm">
+                                  {/* 序号朱印 */}
+                                  <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-vermilion-700 border-2 border-vermilion-800 flex items-center justify-center shadow-md">
+                                    <span className="font-serif text-[13px] font-bold text-[#fff1e4]">{idx + 1}</span>
+                                  </div>
+
+                                  {/* 源线索 → 推论 */}
+                                  <div className="flex flex-col gap-2.5 pl-3">
+                                    {sourceClues.length > 0 && (
+                                      <>
+                                      <div className="flex flex-col gap-1.5">
+                                        {sourceClues.map((src, i) => (
+                                          <div key={src.id} className="flex items-start gap-2">
+                                            <span className="shrink-0 w-5 h-5 rounded-full bg-cyan-700 text-[#eaf4f1] flex items-center justify-center font-sans text-[10px] font-bold mt-0.5">
+                                              {i + 1}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="font-serif text-[13px] text-[#3a2f1c] leading-relaxed line-clamp-2">
+                                                {src.text}
+                                              </p>
+                                              <span className="font-sans text-[11px] text-[#6d5b3d]">{src.source}</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {/* 箭头分隔符 */}
+                                      <div className="flex items-center gap-2 pl-2">
+                                        <div className="w-0.5 h-4 bg-vermilion-700/40" />
+                                        <span className="font-serif text-[12px] text-vermilion-700 font-bold tracking-widest">推演得</span>
+                                        <div className="flex-1 h-px bg-vermilion-700/20" />
+                                      </div>
+                                      </>
+                                    )}
+                                  {/* 推论结果 */}
+                                  <div className="flex items-start gap-2 pl-3 border-l-2 border-vermilion-700/30">
+                                    <span className={`shrink-0 px-1.5 py-0.5 rounded-xs font-serif text-[11px] font-bold tracking-widest border ${
+                                      dStatus === 'true' ? 'bg-vermilion-700 text-[#fff1e4] border-vermilion-800' :
+                                      dStatus === 'false' ? 'bg-[#5a5a5a] text-[#f0f0f0] border-[#404040]' :
+                                      'bg-[#4c4132] text-[#f2e9d2] border-[#33291a]'
+                                    }`}>
+                                      {dStatus === 'true' ? '属实' : dStatus === 'false' ? '伪证' : '未定'}
+                                    </span>
+                                    <p className="font-serif text-[14px] text-[#241d0f] leading-relaxed flex-1">
+                                      {ded.text}
+                                    </p>
+                                  </div>
+                                  {/* 来源标注 */}
+                                  <div className="flex items-center gap-2 pl-3 mt-1">
+                                    <span className="font-sans text-[11px] text-[#6d5b3d]">{ded.source}</span>
+                                    <span className="text-[#c4b59d] text-[11px]">|</span>
+                                    <span className="font-sans text-[11px] text-[#7c6a49]">{ded.timestamp}</span>
+                                  </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ── 书页中缝阴影（仅详情视图） ── */}
-        {view === 'detail' && (
-          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[16px] pointer-events-none z-20 hidden md:block"
+        {/* ── 书页中缝阴影（仅详情视图，仅桌面端非全屏） ── */}
+        {view === 'detail' && !isMobile && !isFullScreen && (
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-4 pointer-events-none z-20 hidden md:block"
             style={{ background: 'linear-gradient(to right, rgba(90,70,40,0) 0%, rgba(90,70,40,0.16) 35%, rgba(58,44,24,0.3) 50%, rgba(90,70,40,0.16) 65%, rgba(90,70,40,0) 100%)' }} />
         )}
       </div>
@@ -852,7 +1077,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
             onBackdropClick={() => setDeletingCase(null)}
             onClose={() => setDeletingCase(null)}
           >
-            <p className="font-serif text-[16px] text-[#3a2f1c] leading-[2] tracking-[0.1em] mb-2">
+            <p className="font-serif text-[16px] text-[#3a2f1c] leading-loose tracking-widest mb-2">
               案卷「<span className="font-bold text-vermilion-800">{deletingCase.name}</span>」连同其中线索、推论，
               <span className="text-vermilion-700 font-bold">一旦焚毁，不可复得</span>。
             </p>
@@ -919,7 +1144,7 @@ export const ClueNotebookModal: React.FC<ClueNotebookModalProps> = ({ isOpen, on
             <div className="flex flex-col gap-3 mb-4">
               {combiningOptions.options.map((option, idx) => (
                 <div key={idx} className="text-left p-4 bg-[#f0e8d3] border border-[#c9b68b] hover:border-[#8a7556] hover:shadow-md transition-all group rounded-sm relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-full h-[3px] bg-[#c9b68b]/60" />
+                  <div className="absolute top-0 left-0 w-full h-0.75 bg-[#c9b68b]/60" />
                   {editingOptionIdx === idx ? (
                     <div className="flex flex-col gap-2">
                       <textarea value={editingOptionValue} onChange={e => setEditingOptionValue(e.target.value)}

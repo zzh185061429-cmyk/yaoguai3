@@ -5,7 +5,11 @@ import { SettingsModal } from '../modals/SettingsModal';
 import { HistoryLogModal } from '../modals/HistoryLogModal';
 import { ClueNotebookModal } from '../modals/ClueNotebookModal';
 import { CalendarModal } from '../modals/CalendarModal';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Radio, Play, Pause, Zap, FastForward, History, Users, Image as ImageIcon, Book, Search } from 'lucide-react';
+import { ThinkingModal } from '../modals/ThinkingModal';
+import { VariablesModal } from '../modals/VariablesModal';
+import { ManualModal } from '../modals/ManualModal';
+import { DeleteFloorModal } from '../modals/DeleteFloorModal';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Radio, Play, Pause, Zap, FastForward, History, Users, Image as ImageIcon, Book, Search, Send, Loader } from 'lucide-react';
 import { AtmosphereEffect } from '../ui/AtmosphereEffect';
 import { TextSelectionClue } from '../ui/TextSelectionClue';
 import { MusicPlayerWidget } from '../ui/MusicPlayerWidget';
@@ -58,14 +62,14 @@ function getTransitionConfig(emotion: string) {
       return {
         initial: { opacity: 0, scale: 1.08, x: 8 },
         animate: { opacity: 1, scale: 1, x: 0 },
-        transition: { duration: 0.18, type: "spring", stiffness: 350 }
+        transition: { duration: 0.18, type: 'spring' as const, stiffness: 350 }
       };
     case '害羞':
     case '害怕':
       return {
         initial: { opacity: 0, scale: 0.96, y: 12 },
         animate: { opacity: 1, scale: 1, y: 0 },
-        transition: { duration: 0.35, ease: "easeOut" }
+        transition: { duration: 0.35, ease: 'easeOut' as const }
       };
     case '伤心':
       return {
@@ -98,7 +102,7 @@ export const GameScreen: React.FC = () => {
     startGenerating, finishGenerating,
     viewingFloorId, setViewingFloor, lastAssistantFloorId,
     isGenerating, generatingFloorId,
-    setPendingMessage, setScriptCharacterLocations,
+    setPendingMessage, pendingMessage, setScriptCharacterLocations,
     playerName,
     weatherParticlesEnabled,
     isInvestigating, setIsInvestigating,
@@ -110,8 +114,7 @@ export const GameScreen: React.FC = () => {
   // ── 全屏状态 ──
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const [activeModal, setActiveModal] = useState<'settings' | 'history' | 'clues' | 'map' | 'calendar' | 'thinking' | 'variables' | 'delete' | 'manual' | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeModal, setActiveModal] = useState<'settings' | 'history' | 'clues' | 'calendar' | 'thinking' | 'variables' | 'delete' | 'manual' | null>(null);
 
   // ── 剧本播放状态 ──
   const [script, setScript] = useState<ScriptLine[]>([]);
@@ -127,56 +130,150 @@ export const GameScreen: React.FC = () => {
   const [parallelEvents, setParallelEvents] = useState<ParallelEvent[]>([]);
   const [showParallelEvents, setShowParallelEvents] = useState(true);
   const [isTextBoxCollapsed, setIsTextBoxCollapsed] = useState(false);
+  const [isInputMode, setIsInputMode] = useState(false);
+  const [inputText, setInputText] = useState('');
+  const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const skipTypingRef = useRef(false);
   const prevLocationKeyRef = useRef<string | null>(null);
   const touchStartRef = useRef<number | null>(null);
 
-  // ── 全屏：操作父页面 DOM ──
-  const toggleFullscreen = async () => {
-    const parent$ = window.parent.$;
-    if (!parent$) {
-      console.warn('[幻璃镜] 无法访问父页面 jQuery');
-      return;
-    }
-    const iframe = window.frameElement as HTMLIFrameElement | null;
-    const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
-    if (!isFullscreen) {
-      let hideStyle = parent$('#tavern-mirage-fs-hide');
-      if (hideStyle.length === 0) {
-        hideStyle = parent$('<style id="tavern-mirage-fs-hide"></style>').appendTo('head');
+  // ── 恢复 iframe 撑大高度 ──
+  const restoreIframeHeight = useCallback(() => {
+    try {
+      let parent$: any = null;
+      try {
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+          parent$ = (window.parent as any).$;
+        }
+      } catch {
+        parent$ = null;
       }
-      const floorId = $mes.attr('mesid');
-      hideStyle.text(floorId
-        ? `#chat .mes:not([mesid="${floorId}"]) { display: none !important; }`
-        : `#chat .mes { display: none !important; }`);
-      $mes.css({ position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh', 'z-index': '99999', 'max-width': 'none', 'max-height': 'none' });
-      if (iframe) parent$(iframe).css({ width: '100%', height: '100%' });
-      setIsFullscreen(true);
-      console.info('[幻璃镜] 已进入全屏模式');
-      try { await document.documentElement.requestFullscreen(); } catch (e) { console.warn('[幻璃镜] 浏览器原生全屏失败，使用伪全屏', e); }
-    } else {
-      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) { console.warn('[幻璃镜] 退出浏览器全屏失败', e); }
-      $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
-      if (iframe) parent$(iframe).css({ width: '', height: '' });
-      parent$('#tavern-mirage-fs-hide').remove();
-      setIsFullscreen(false);
-      console.info('[幻璃镜] 已退出全屏模式');
+      if (!parent$) return;
+
+      let iframe: HTMLIFrameElement | null = null;
+      try {
+        iframe = window.frameElement as HTMLIFrameElement | null;
+      } catch {
+        iframe = null;
+      }
+      if (!iframe) return;
+
+      // 先清除全屏时的内联样式，再撑大高度
+      parent$(iframe).css({ width: '', position: '', top: '', left: '', 'z-index': '', 'max-width': '', 'max-height': '' });
+      const targetH = isMobile ? 700 : 800;
+      parent$(iframe).css({ height: `${targetH}px` });
+    } catch {
+      // ignore
+    }
+  }, [isMobile]);
+
+  // ── 全屏：安全尝试操作父页面 DOM ──
+  const toggleFullscreen = async () => {
+    try {
+      let parent$: any = null;
+      try {
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+          parent$ = (window.parent as any).$;
+        }
+      } catch {
+        parent$ = null;
+      }
+
+      if (!parent$) {
+        if (!isFullscreen) {
+          try {
+            if (document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen();
+            }
+          } catch (e) {
+            console.warn('[幻璃镜] 浏览器原生全屏失败，使用窗口最大化', e);
+          }
+          setIsFullscreen(true);
+        } else {
+          try {
+            if (document.fullscreenElement && document.exitFullscreen) {
+              await document.exitFullscreen();
+            }
+          } catch (e) {
+            console.warn('[幻璃镜] 退出全屏失败', e);
+          }
+          setIsFullscreen(false);
+        }
+        return;
+      }
+
+      let iframe: HTMLIFrameElement | null = null;
+      try {
+        iframe = window.frameElement as HTMLIFrameElement | null;
+      } catch {
+        iframe = null;
+      }
+
+      const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
+      if (!isFullscreen) {
+        let hideStyle = parent$('#tavern-mirage-fs-hide');
+        if (hideStyle.length === 0) {
+          hideStyle = parent$('<style id="tavern-mirage-fs-hide"></style>').appendTo('head');
+        }
+        const floorId = $mes.attr('mesid');
+        hideStyle.text(floorId
+          ? `#chat .mes:not([mesid="${floorId}"]) { display: none !important; }`
+          : `#chat .mes { display: none !important; }`);
+        $mes.css({ position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh', 'z-index': '99999', 'max-width': 'none', 'max-height': 'none' });
+        if (iframe) parent$(iframe).css({ width: '100%', height: '100%' });
+        (window as any).__mirageFullscreen = true;
+        setIsFullscreen(true);
+        console.info('[幻璃镜] 已进入全屏模式');
+        try { await document.documentElement.requestFullscreen(); } catch (e) { console.warn('[幻璃镜] 浏览器原生全屏失败，使用伪全屏', e); }
+      } else {
+        try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) { console.warn('[幻璃镜] 退出浏览器全屏失败', e); }
+        $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
+        parent$('#tavern-mirage-fs-hide').remove();
+        (window as any).__mirageFullscreen = false;
+        setIsFullscreen(false);
+        // 退出全屏后重新撑大 iframe 高度
+        restoreIframeHeight();
+        console.info('[幻璃镜] 已退出全屏模式');
+      }
+    } catch (err) {
+      console.warn('[幻璃镜] 全屏切换异常:', err);
     }
   };
 
   useEffect(() => {
     const onFsChange = async () => {
-      if (!document.fullscreenElement && isFullscreen) {
-        const parent$ = window.parent.$;
-        if (!parent$) return;
-        const iframe = window.frameElement as HTMLIFrameElement | null;
-        const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
-        $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
-        if (iframe) parent$(iframe).css({ width: '', height: '' });
-        parent$('#tavern-mirage-fs-hide').remove();
-        setIsFullscreen(false);
-        console.info('[幻璃镜] 浏览器全屏退出，已同步退出伪全屏');
+      try {
+        if (!document.fullscreenElement && isFullscreen) {
+          let parent$: any = null;
+          try {
+            if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+              parent$ = (window.parent as any).$;
+            }
+          } catch {
+            parent$ = null;
+          }
+          if (!parent$) {
+            setIsFullscreen(false);
+            return;
+          }
+          let iframe: HTMLIFrameElement | null = null;
+          try {
+            iframe = window.frameElement as HTMLIFrameElement | null;
+          } catch {
+            iframe = null;
+          }
+          const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
+          $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
+          parent$('#tavern-mirage-fs-hide').remove();
+          (window as any).__mirageFullscreen = false;
+          setIsFullscreen(false);
+          // 浏览器全屏退出后重新撑大 iframe 高度
+          restoreIframeHeight();
+          console.info('[幻璃镜] 浏览器全屏退出，已同步退出伪全屏');
+        }
+      } catch (err) {
+        console.warn('[幻璃镜] 同步全屏状态异常:', err);
       }
     };
     document.addEventListener('fullscreenchange', onFsChange);
@@ -185,13 +282,29 @@ export const GameScreen: React.FC = () => {
 
   useEffect(() => {
     return () => {
-      const parent$ = window.parent.$;
-      if (!parent$) return;
-      const iframe = window.frameElement as HTMLIFrameElement | null;
-      const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
-      $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
-      if (iframe) parent$(iframe).css({ width: '', height: '' });
-      parent$('#tavern-mirage-fs-hide').remove();
+      try {
+        let parent$: any = null;
+        try {
+          if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+            parent$ = (window.parent as any).$;
+          }
+        } catch {
+          parent$ = null;
+        }
+        if (!parent$) return;
+        let iframe: HTMLIFrameElement | null = null;
+        try {
+          iframe = window.frameElement as HTMLIFrameElement | null;
+        } catch {
+          iframe = null;
+        }
+        const $mes = iframe ? parent$(iframe).closest('.mes') : parent$('#chat .mes').last();
+        $mes.css({ position: '', top: '', left: '', width: '', height: '', 'z-index': '', 'max-width': '', 'max-height': '' });
+        if (iframe) parent$(iframe).css({ width: '', height: '' });
+        parent$('#tavern-mirage-fs-hide').remove();
+      } catch {
+        // ignore safely
+      }
     };
   }, []);
 
@@ -225,8 +338,8 @@ export const GameScreen: React.FC = () => {
 
   const sceneLocation = useMemo(() => {
     const line = script[currentIndex];
-    if (line?.location) return { parent: line.location.parent, spot: line.location.spot };
-    return { parent: '未知', spot: undefined };
+    if (line?.location) return { path: line.location.path, displayName: line.location.displayName };
+    return { path: '未知', displayName: '未知' };
   }, [script, currentIndex]);
 
   // ── 楼层切换时解析剧本 ──
@@ -288,7 +401,7 @@ export const GameScreen: React.FC = () => {
       const line = script[i];
       if (!line.speaker || line.speaker === '<user>' || line.speaker === '我') continue;
       if (line.location) {
-        const loc = line.location.spot ? `${line.location.parent}/${line.location.spot}` : line.location.parent;
+        const loc = line.location.path;
         if (loc) charLocs[line.speaker] = loc;
       }
     }
@@ -298,7 +411,7 @@ export const GameScreen: React.FC = () => {
   // ── 更新场景角色（多角色同屏） ──
   useEffect(() => {
     const loc = currentLine?.location;
-    const currentLocationKey = loc ? `${loc.parent}/${loc.spot || ''}` : null;
+    const currentLocationKey = loc ? loc.path : null;
     const locationChanged = currentLocationKey !== prevLocationKeyRef.current;
     prevLocationKeyRef.current = currentLocationKey;
 
@@ -475,21 +588,77 @@ export const GameScreen: React.FC = () => {
   const handleRegenerate = async () => {
     setRegenerating(true); startGenerating();
     console.info('[幻璃镜] 开始重新生成...');
-    const result = await regenerateCurrentFloor();
+    const result = await regenerateCurrentFloor(targetFloorId);
     if (result.success) {
       addNotification('已重新生成当前楼层', 'success');
-    } else {
+    } else if ('error' in result && result.error) {
       addNotification(result.error, 'warning');
     }
     setRegenerating(false); finishGenerating();
   };
 
+  // ── 内嵌输入模式：文本区切换为输入框 ──
+  const handleEnterInputMode = useCallback(() => {
+    if (isGenerating) return;
+    setIsInputMode(true);
+    requestAnimationFrame(() => inputTextareaRef.current?.focus());
+  }, [isGenerating]);
+
+  const handleExitInputMode = useCallback(() => {
+    setIsInputMode(false);
+    setInputText('');
+  }, []);
+
+  const handleSendInput = useCallback(async () => {
+    const trimmed = inputText.trim();
+    if (!trimmed || isGenerating) return;
+
+    setInputText('');
+    setIsInputMode(false);
+    sfx.play('confirm');
+    startGenerating();
+
+    try {
+      await triggerSlash('/send ' + trimmed);
+      console.info('[幻璃镜] user 案录已创建');
+      await triggerSlash('/trigger await=true');
+      console.info('[幻璃镜] 断案演化生成完成');
+    } catch (err: any) {
+      console.error('[幻璃镜] 发送/演化失败:', err?.message || err);
+      sfx.play('error');
+      setInputText(trimmed);
+      setIsInputMode(true);
+    } finally {
+      finishGenerating();
+    }
+  }, [inputText, isGenerating, startGenerating, finishGenerating]);
+
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (isGenerating) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendInput();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleExitInputMode();
+    }
+  };
+
+  // pendingMessage 联动：地图/选项写入时自动进入输入模式
+  useEffect(() => {
+    if (pendingMessage) {
+      setInputText(pendingMessage);
+      setIsInputMode(true);
+      setPendingMessage(null);
+      requestAnimationFrame(() => inputTextareaRef.current?.focus());
+    }
+  }, [pendingMessage, setPendingMessage]);
+
   const currentEmotion = currentLine?.emotion || '默认';
   const screenEffect = EMOTION_EFFECTS[currentEmotion];
   const displayLocationName = useMemo(() => {
     if (currentLine?.location) {
-      const { parent, spot } = currentLine.location;
-      return spot ? `${parent} · ${spot}` : parent;
+      return currentLine.location.displayName;
     }
     return '幻璃镜';
   }, [currentLine]);
@@ -504,6 +673,7 @@ export const GameScreen: React.FC = () => {
           onOpenReading={() => setActiveModal('history')} onOpenDelete={() => setActiveModal('delete')}
           onOpenSettings={() => setActiveModal('settings')} onOpenManual={() => setActiveModal('manual')}
           onOpenCalendar={() => setActiveModal('calendar')}
+          onOpenClues={() => setActiveModal('clues')}
           onRegenerate={handleRegenerate} regenerating={regenerating} />
         <div className="flex-1 flex items-center justify-center">
           <p className="text-paper-200/50 text-xl font-serif tracking-widest">等待剧情内容...</p>
@@ -512,7 +682,11 @@ export const GameScreen: React.FC = () => {
         <HistoryLogModal isOpen={activeModal === 'history'} onClose={() => setActiveModal(null)} />
         <ClueNotebookModal isOpen={activeModal === 'clues'} onClose={() => setActiveModal(null)} />
         <CalendarModal isOpen={activeModal === 'calendar'} onClose={() => setActiveModal(null)} />
-        <ChatInputWidget /><MusicPlayerWidget />
+        <ThinkingModal isOpen={activeModal === 'thinking'} onClose={() => setActiveModal(null)} />
+        <VariablesModal isOpen={activeModal === 'variables'} onClose={() => setActiveModal(null)} />
+        <ManualModal isOpen={activeModal === 'manual'} onClose={() => setActiveModal(null)} />
+<DeleteFloorModal isOpen={activeModal === 'delete'} onClose={() => setActiveModal(null)} />
+<MusicPlayerWidget />
       </motion.div>
     );
   }
@@ -541,6 +715,8 @@ export const GameScreen: React.FC = () => {
           onOpenReading={() => setActiveModal('history')} onOpenDelete={() => setActiveModal('delete')}
           onOpenSettings={() => setActiveModal('settings')} onOpenManual={() => setActiveModal('manual')}
           onOpenCalendar={() => setActiveModal('calendar')}
+          onOpenClues={() => setActiveModal('clues')}
+          onOpenHarem={() => { setGalleryTab('characters'); setCurrentScreen('gallery'); }}
           onRegenerate={handleRegenerate} regenerating={regenerating} />
 
         {/* ════ 上半视觉区 (60%) ════ */}
@@ -576,7 +752,7 @@ export const GameScreen: React.FC = () => {
           </div>
 
           {/* 底部渐变遮罩 */}
-          <div className="absolute inset-0 bg-gradient-to-t from-ink-900 via-ink-900/30 to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-0 bg-linear-to-t from-ink-900 via-ink-900/30 to-transparent z-10 pointer-events-none" />
 
           {/* 大气粒子 */}
           {weatherParticlesEnabled && <AtmosphereEffect />}
@@ -634,27 +810,30 @@ export const GameScreen: React.FC = () => {
             )}
           </div>
 
-          {/* 平行事件面板 — 手机端紧凑版 */}
+          {/* 平行事件面板 — 手机端古典木签版 */}
           <AnimatePresence mode="wait">
             {parallelEvents.length > 0 && showParallelEvents && (
               <motion.div key="pe-m-expanded" initial={{ x: -200, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -200, opacity: 0 }}
-                transition={{ duration: 0.3 }} className="absolute top-2 left-2 z-30 max-w-60 pointer-events-auto">
-                <div className="bg-ink-900/90 backdrop-blur-md border border-cyan-900/50 rounded-lg shadow-lg overflow-hidden">
-                  <div className="flex items-center justify-between bg-cyan-900/60 px-2 py-1 border-b border-ink-700">
-                    <div className="flex items-center gap-1">
-                      <Radio className="w-3 h-3 text-cyan-400" />
-                      <span className="font-serif text-xs text-cyan-300 tracking-widest">平行事件</span>
+                transition={{ duration: 0.3 }} className="absolute top-2 left-2 z-30 max-w-64 pointer-events-auto">
+                <div className="bg-[#140e0a]/95 backdrop-blur-md border border-[#6b583e] rounded-xs shadow-2xl overflow-hidden font-serif">
+                  <div className="flex items-center justify-between bg-[#241810] px-2.5 py-1 border-b border-[#4d3822]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-gold-500 animate-pulse" />
+                      <span className="text-xs text-gold-300 font-bold tracking-widest">八荒异闻 · 同时演进</span>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); setShowParallelEvents(false); }}
-                      className="text-paper-200 hover:text-vermilion-400 transition-colors">
-                      <X className="w-3 h-3" />
+                      className="text-paper-400 hover:text-vermilion-400 transition-colors p-0.5 cursor-pointer">
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <div className="p-2 space-y-1.5">
+                  <div className="p-2 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                     {parallelEvents.map((evt, i) => (
-                      <div key={i} className="border-l-2 border-vermilion-500 pl-1.5">
-                        <div className="text-gold-300 text-xs font-serif leading-tight mb-0.5">{evt.location}</div>
-                        <div className="text-paper-200/80 text-xs leading-snug">{evt.event}</div>
+                      <div key={i} className="border-l-2 border-vermilion-800 pl-2 bg-[#1b120b]/80 p-1.5 rounded-xs border-r border-t border-b border-ink-800">
+                        <div className="text-gold-300 text-xs font-bold tracking-wider mb-0.5 flex items-center justify-between">
+                          <span>{evt.location}</span>
+                          <span className="text-[10px] text-paper-600">【异动】</span>
+                        </div>
+                        <div className="text-paper-400 text-xs leading-relaxed">{evt.event}</div>
                       </div>
                     ))}
                   </div>
@@ -664,15 +843,16 @@ export const GameScreen: React.FC = () => {
             {parallelEvents.length > 0 && !showParallelEvents && (
               <motion.button key="pe-m-collapsed" initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }}
                 onClick={(e) => { e.stopPropagation(); setShowParallelEvents(true); }}
-                className="absolute top-2 left-2 z-30 bg-ink-900/90 border border-cyan-900/50 p-1 rounded-lg hover:scale-110 active:scale-90 transition-transform pointer-events-auto"
-                title="展开平行事件">
-                <Radio className="w-3 h-3 text-cyan-400" />
+                className="absolute top-2 left-2 z-30 bg-[#1f150e]/95 border border-gold-700 px-2 py-1 rounded-xs hover:scale-105 active:scale-95 transition-all pointer-events-auto flex items-center gap-1 text-gold-300 text-xs font-serif shadow-md cursor-pointer"
+                title="展开八荒异闻">
+                <span className="w-1.5 h-1.5 rounded-full bg-gold-500 animate-pulse" />
+                <span>异闻</span>
               </motion.button>
             )}
           </AnimatePresence>
 
           {/* 视觉区底部渐变 */}
-          <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-ink-900 to-transparent z-19 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 right-0 h-6 bg-linear-to-t from-ink-900 to-transparent z-19 pointer-events-none" />
         </div>
 
         {/* ════ 下半操作区 ════ */}
@@ -688,11 +868,11 @@ export const GameScreen: React.FC = () => {
                 <motion.div key={currentLine.speaker} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}
                   className="flex items-center gap-2 mb-1 shrink-0">
                   {currentLine.avatar && (
-                    <div className={`w-9 h-9 bg-white border-4 flex items-center justify-center overflow-hidden relative transform -skew-x-6 ${isCyan ? 'border-cyan-500' : 'border-vermilion-500'}`}>
+                    <div className={`w-9 h-9 bg-[#1a1510] border-2 flex items-center justify-center overflow-hidden relative transform -skew-x-3 ${isCyan ? 'border-cyan-700' : 'border-vermilion-700'}`}>
                       <img src={currentLine.avatar} alt="avatar" className="w-full h-full object-cover object-top scale-110" />
                     </div>
                   )}
-                  <div className={`px-3 py-0.5 border-4 ${themeBorderClass} ${themeBgClass} text-lg font-serif italic -skew-x-6 ${themeTextClass} shadow-[2px_2px_0_rgba(0,0,0,0.5)]`}>
+                  <div className={`px-3 py-0.5 border-2 ${themeBorderClass} ${themeBgClass} text-lg font-serif italic -skew-x-3 ${themeTextClass} shadow-[2px_2px_0_rgba(0,0,0,0.6)]`}>
                     {displayName(currentLine.speaker!, playerName)}
                     {currentLine.emotion && currentLine.emotion !== '默认' && (
                       <span className="ml-1 text-xs font-sans opacity-70">[{currentLine.emotion}]</span>
@@ -710,36 +890,36 @@ export const GameScreen: React.FC = () => {
             )}
             {/* 文字内容 — 可滚动 */}
             <div
-              className={`flex-1 overflow-y-auto hide-scrollbar text-lg font-sans tracking-wide leading-relaxed min-h-0 ${currentLine.type === 'thought' ? 'text-cyan-400' : 'text-paper-100'} ${isInvestigating ? 'select-text cursor-text' : 'select-none'}`}
+              className={`flex-1 overflow-y-auto hide-scrollbar text-lg font-sans tracking-wide leading-relaxed min-h-0 ${currentLine.type === 'thought' ? 'text-gold-300 italic' : 'text-paper-100'} ${isInvestigating ? 'select-text cursor-text' : 'select-none'}`}
               style={isInvestigating ? { WebkitTouchCallout: 'default', WebkitUserSelect: 'text', userSelect: 'text' } : {}}
             >
               {displayedText}
-              {isTyping && <span className={`inline-block w-2 h-4 animate-pulse ml-1 align-middle ${currentLine.type === 'thought' ? 'bg-cyan-400' : 'bg-paper-100'}`} />}
+              {isTyping && <span className={`inline-block w-2 h-4 animate-pulse ml-1 align-middle ${currentLine.type === 'thought' ? 'bg-gold-300' : 'bg-paper-100'}`} />}
             </div>
           </div>
 
           {/* 按钮组 — 横向可滚动 */}
           <div className="flex items-center gap-1 px-2 pb-2 pt-1 shrink-0 overflow-x-auto hide-scrollbar">
             <button onClick={(e) => { e.stopPropagation(); setShowBacklog(true); }}
-              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-xs shrink-0">
+              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50 transition-colors rounded-xs text-xs shrink-0">
               <History className="w-3.5 h-3.5" />
             </button>
             <button onClick={(e) => { e.stopPropagation(); handlePrev(); }} disabled={currentIndex === 0}
-              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-xs disabled:opacity-30 shrink-0">
+              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50 transition-colors rounded-xs text-xs disabled:opacity-30 shrink-0">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <button onClick={(e) => { e.stopPropagation(); setIsAutoMode(prev => !prev); }}
-              className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded text-xs shrink-0 ${isAutoMode ? 'bg-cyan-900/60 border-cyan-500 text-cyan-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50'}`}
+              className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded-xs text-xs shrink-0 ${isAutoMode ? 'bg-[#382b18] border-gold-500 text-gold-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50'}`}
               title={isAutoMode ? '关闭 Auto' : '开启 Auto'}>
               {isAutoMode ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             </button>
             <button onClick={(e) => { e.stopPropagation(); const next = textSpeed >= 3 ? 1 : textSpeed + 1; textSettings.setTextSpeed(next); }}
-              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-xs shrink-0"
+              className="flex items-center gap-1 px-2 py-1 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50 transition-colors rounded-xs text-xs shrink-0"
               title={`速度: ${textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}`}>
               {textSpeed >= 3 ? <Zap className="w-3.5 h-3.5 text-gold-400" /> : <FastForward className="w-3.5 h-3.5" />}
             </button>
             <button onClick={(e) => { e.stopPropagation(); setIsInvestigating(!isInvestigating); }}
-              className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded text-xs shrink-0 ${isInvestigating ? 'bg-gold-900/60 border-gold-500 text-gold-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-400 hover:border-gold-500/50'}`}
+              className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded-xs text-xs shrink-0 ${isInvestigating ? 'bg-gold-900/60 border-gold-500 text-gold-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-400 hover:border-gold-500/50'}`}
               title={isInvestigating ? '关闭调查' : '开启调查'}>
               <Search className="w-3.5 h-3.5" />
             </button>
@@ -747,12 +927,12 @@ export const GameScreen: React.FC = () => {
             {/* 楼层翻页 — 靠右 */}
             <div className="flex items-center gap-1 shrink-0 ml-auto">
               <button onClick={(e) => { e.stopPropagation(); if (canPrevFloor && navIndex > 0) { sfx.play('pageTurn'); setViewingFloor(availableFloors[navIndex - 1]); } }} disabled={!canPrevFloor}
-                className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded text-xs shrink-0 ${canPrevFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
+                className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded-xs text-xs shrink-0 ${canPrevFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
                 title="上一楼层">
                 <ChevronUp className="w-3.5 h-3.5" />
               </button>
               <button onClick={(e) => { e.stopPropagation(); if (canNextFloor && navIndex >= 0) { sfx.play('pageTurn'); if (navIndex + 1 === availableFloors.length - 1) setViewingFloor(null); else setViewingFloor(availableFloors[navIndex + 1]); } }} disabled={!canNextFloor}
-                className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded text-xs shrink-0 ${canNextFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
+                className={`flex items-center gap-1 px-2 py-1 border transition-colors rounded-xs text-xs shrink-0 ${canNextFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-300 hover:border-gold-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
                 title="下一楼层">
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
@@ -851,64 +1031,13 @@ export const GameScreen: React.FC = () => {
         <HistoryLogModal isOpen={activeModal === 'history'} onClose={() => setActiveModal(null)} />
         <ClueNotebookModal isOpen={activeModal === 'clues'} onClose={() => setActiveModal(null)} />
         <CalendarModal isOpen={activeModal === 'calendar'} onClose={() => setActiveModal(null)} />
+        <ThinkingModal isOpen={activeModal === 'thinking'} onClose={() => setActiveModal(null)} />
+        <VariablesModal isOpen={activeModal === 'variables'} onClose={() => setActiveModal(null)} />
+        <ManualModal isOpen={activeModal === 'manual'} onClose={() => setActiveModal(null)} />
+<DeleteFloorModal isOpen={activeModal === 'delete'} onClose={() => setActiveModal(null)} />
 
-        {/* 待接入模态框占位 */}
-        {activeModal === 'thinking' && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-            <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-            <div className="relative bg-ink-800 border border-cyan-900/50 rounded-xl p-6 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
-              <h2 className="font-serif text-lg text-cyan-400 tracking-widest mb-3">思维链</h2>
-              <p className="text-paper-200 text-sm">思维链查看功能待接入。</p>
-              <button onClick={() => setActiveModal(null)} className="mt-3 text-ink-500 hover:text-cyan-400 text-sm">关闭</button>
-            </div>
-          </div>
-        )}
-        {activeModal === 'variables' && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-            <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-            <div className="relative bg-ink-800 border border-gold-900/50 rounded-xl p-6 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
-              <h2 className="font-serif text-lg text-gold-400 tracking-widest mb-3">变量查看</h2>
-              <p className="text-paper-200 text-sm">变量查看器待接入。</p>
-              <button onClick={() => setActiveModal(null)} className="mt-3 text-ink-500 hover:text-gold-400 text-sm">关闭</button>
-            </div>
-          </div>
-        )}
-        {activeModal === 'delete' && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-            <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-            <div className="relative bg-ink-800 border border-vermilion-900/50 rounded-xl p-6 max-w-sm mx-4" onClick={e => e.stopPropagation()}>
-              <h2 className="font-serif text-lg text-vermilion-400 tracking-widest mb-3">删除楼层</h2>
-              <p className="text-paper-200 text-sm">删除楼层功能待接入。</p>
-              <button onClick={() => setActiveModal(null)} className="mt-3 text-ink-500 hover:text-vermilion-400 text-sm">关闭</button>
-            </div>
-          </div>
-        )}
-        {activeModal === 'manual' && (
-          <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-            <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-            <div className="relative bg-ink-800 border border-gold-900/50 rounded-xl p-6 max-w-sm max-h-[80vh] overflow-y-auto custom-scrollbar mx-4" onClick={e => e.stopPropagation()}>
-              <h2 className="font-serif text-xl text-gold-400 tracking-widest mb-4">说明书</h2>
-              <div className="space-y-3 text-paper-200 text-sm leading-relaxed">
-                <section>
-                  <h3 className="font-serif text-cyan-400 tracking-widest mb-1">基本操作</h3>
-                  <p>点击下半区域或左滑推进剧情。右滑回看上一句。</p>
-                </section>
-                <section>
-                  <h3 className="font-serif text-cyan-400 tracking-widest mb-1">文本框</h3>
-                  <p>点击文字区域推进剧本。底部按钮提供历史、上一句、Auto、速度、楼层翻页功能。</p>
-                </section>
-                <section>
-                  <h3 className="font-serif text-gold-400 tracking-widest mb-1">工具栏</h3>
-                  <p>顶部工具栏提供全屏、楼层导航、地图、时辰、剧情回顾、思维链、变量、删除、重生成、设置等功能。</p>
-                </section>
-              </div>
-              <button onClick={() => setActiveModal(null)} className="mt-4 px-4 py-2 bg-cyan-900/40 border border-cyan-900/50 text-cyan-300 rounded font-serif tracking-widest hover:bg-cyan-800/40 transition-colors">关闭</button>
-            </div>
-          </div>
-        )}
-
-        <TextSelectionClue />
-        <MusicPlayerWidget />
+<TextSelectionClue />
+<MusicPlayerWidget />
       </motion.div>
     );
   }
@@ -932,7 +1061,7 @@ export const GameScreen: React.FC = () => {
       </div>
 
       {/* 底部渐变遮罩 */}
-      <div className="absolute inset-0 bg-gradient-to-t from-ink-900 via-ink-900/30 to-transparent z-10 pointer-events-none" />
+      <div className="absolute inset-0 bg-linear-to-t from-ink-900 via-ink-900/30 to-transparent z-10 pointer-events-none" />
 
       {/* 大气粒子 */}
       {weatherParticlesEnabled && <AtmosphereEffect />}
@@ -943,52 +1072,9 @@ export const GameScreen: React.FC = () => {
         onOpenReading={() => setActiveModal('history')} onOpenDelete={() => setActiveModal('delete')}
         onOpenSettings={() => setActiveModal('settings')} onOpenManual={() => setActiveModal('manual')}
         onOpenCalendar={() => setActiveModal('calendar')}
+        onOpenClues={() => setActiveModal('clues')}
+        onOpenHarem={() => { setGalleryTab('characters'); setCurrentScreen('gallery'); }}
         onRegenerate={handleRegenerate} regenerating={regenerating} />
-
-      {/* ════ 左侧栏 ════ */}
-      <div className="absolute left-0 top-[40%] z-40 pointer-events-auto">
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="bg-ink-900/60 backdrop-blur-md border border-l-0 border-ink-700/50 p-3 rounded-r-md text-paper-200 hover:text-cyan-400 transition-colors shadow-lg">
-          {isSidebarOpen ? <ChevronLeft size={24} /> : <ChevronRight size={24} />}
-        </button>
-      </div>
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div initial={{ opacity: 0, x: '-100%' }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: '-100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="absolute left-0 top-0 bottom-0 w-64 bg-ink-900/90 backdrop-blur-xl border-r border-ink-700/50 z-30 flex flex-col py-16 pointer-events-auto">
-            <h3 className="font-serif text-2xl text-center text-paper-200 tracking-widest mb-12">浮世万象</h3>
-            <button onClick={() => { setGalleryTab('characters'); setCurrentScreen('gallery'); }}
-              className="flex flex-col items-center gap-4 py-8 px-4 hover:bg-ink-800/50 transition-colors border-y border-transparent hover:border-ink-700/50 group">
-              <div className="w-16 h-16 rounded-full border border-ink-700/50 flex items-center justify-center group-hover:border-cyan-400 group-hover:text-cyan-400 transition-colors">
-                <Users size={24} />
-              </div>
-              <span className="font-sans text-sm tracking-widest text-paper-200 group-hover:text-cyan-400">角色图鉴</span>
-            </button>
-            <button onClick={() => { setGalleryTab('character_cg'); setCurrentScreen('gallery'); }}
-              className="flex flex-col items-center gap-4 py-8 px-4 hover:bg-ink-800/50 transition-colors border-b border-transparent hover:border-ink-700/50 group">
-              <div className="w-16 h-16 rounded-full border border-ink-700/50 flex items-center justify-center group-hover:border-cyan-400 group-hover:text-cyan-400 transition-colors">
-                <ImageIcon size={24} />
-              </div>
-              <span className="font-sans text-sm tracking-widest text-paper-200 group-hover:text-cyan-400">角色CG</span>
-            </button>
-            <button onClick={() => { setGalleryTab('location_cg'); setCurrentScreen('gallery'); }}
-              className="flex flex-col items-center gap-4 py-8 px-4 hover:bg-ink-800/50 transition-colors border-b border-transparent hover:border-ink-700/50 group">
-              <div className="w-16 h-16 rounded-full border border-ink-700/50 flex items-center justify-center group-hover:border-cyan-400 group-hover:text-cyan-400 transition-colors">
-                <ImageIcon size={24} />
-              </div>
-              <span className="font-sans text-sm tracking-widest text-paper-200 group-hover:text-cyan-400">地点CG</span>
-            </button>
-            <button onClick={() => setActiveModal('clues')}
-              className="flex flex-col items-center gap-4 py-8 px-4 hover:bg-ink-800/50 transition-colors border-b border-transparent hover:border-ink-700/50 group">
-              <div className="w-16 h-16 rounded-full border border-ink-700/50 flex items-center justify-center group-hover:border-gold-400 group-hover:text-gold-400 transition-colors">
-                <Book size={24} />
-              </div>
-              <span className="font-sans text-sm tracking-widest text-paper-200 group-hover:text-gold-400">调查卷宗</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ════ 立绘层（多角色同屏） ════ */}
       <div className="absolute inset-0 z-15 pointer-events-none overflow-hidden">
@@ -1012,7 +1098,7 @@ export const GameScreen: React.FC = () => {
             >
               {char.sprite && (
                 <img src={char.sprite} alt={`${char.speaker}-${char.emotion}`}
-                  className="h-[85vh] max-h-[1000px] w-auto object-contain object-bottom drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+                  className="h-[85vh] max-h-250 w-auto object-contain object-bottom drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]"
                   style={{
                     maskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)',
                     WebkitMaskImage: 'linear-gradient(to bottom, black 80%, transparent 100%)',
@@ -1042,23 +1128,28 @@ export const GameScreen: React.FC = () => {
       <AnimatePresence mode="wait">
         {parallelEvents.length > 0 && showParallelEvents && (
           <motion.div key="pe-expanded" initial={{ x: -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }}
-            transition={{ duration: 0.3 }} className="absolute top-16 left-4 z-30 max-w-65 pointer-events-auto">
-            <div className="bg-ink-900/90 backdrop-blur-md border border-cyan-900/50 rounded-lg shadow-lg overflow-hidden">
-              <div className="flex items-center justify-between bg-cyan-900/60 px-3 py-1.5 border-b border-ink-700">
-                <div className="flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 text-cyan-400" />
-                  <span className="font-serif text-sm text-cyan-300 tracking-widest">平行事件</span>
+            transition={{ duration: 0.3 }} className="absolute top-16 left-4 z-30 max-w-72 pointer-events-auto">
+            <div className="bg-[#140e0a]/95 backdrop-blur-md border border-[#6b583e] rounded-xs shadow-2xl overflow-hidden font-serif">
+              <div className="flex items-center justify-between bg-[#241810] px-3 py-2 border-b border-[#4d3822]">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-gold-500 animate-pulse" />
+                  <span className="font-serif text-sm font-bold text-gold-300 tracking-widest">八荒异闻 · 同时演进</span>
                 </div>
                 <button onClick={(e) => { e.stopPropagation(); setShowParallelEvents(false); }}
-                  className="text-paper-200 hover:text-vermilion-400 transition-colors">
+                  className="text-paper-400 hover:text-vermilion-400 transition-colors p-0.5 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-2.5 space-y-2">
+              <div className="p-3 space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar">
                 {parallelEvents.map((evt, i) => (
-                  <div key={i} className="border-l-2 border-vermilion-500 pl-2">
-                    <div className="text-gold-300 text-sm font-serif leading-tight mb-1">{evt.location}</div>
-                    <div className="text-paper-200/80 text-sm leading-snug">{evt.event}</div>
+                  <div key={i} className="border-l-2 border-vermilion-800 pl-2.5 bg-[#1b120b]/80 p-2 rounded-xs border-r border-t border-b border-ink-800">
+                    <div className="text-gold-300 text-xs font-bold font-serif leading-tight mb-1 flex items-center justify-between">
+                      <span>{evt.location}</span>
+                      <span className="text-[10px] text-paper-600 bg-[#140e09] px-1.5 py-0.2 border border-[#332517] rounded-xs">
+                        异动演化
+                      </span>
+                    </div>
+                    <div className="text-paper-400 text-xs leading-relaxed font-serif">{evt.event}</div>
                   </div>
                 ))}
               </div>
@@ -1068,9 +1159,10 @@ export const GameScreen: React.FC = () => {
         {parallelEvents.length > 0 && !showParallelEvents && (
           <motion.button key="pe-collapsed" initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }}
             onClick={(e) => { e.stopPropagation(); setShowParallelEvents(true); }}
-            className="absolute top-16 left-4 z-30 bg-ink-900/90 border border-cyan-900/50 p-1.5 rounded-lg hover:scale-110 active:scale-90 transition-transform pointer-events-auto"
-            title="展开平行事件">
-            <Radio className="w-4 h-4 text-cyan-400" />
+            className="absolute top-16 left-4 z-30 bg-[#1f150e]/95 border border-gold-700 px-2.5 py-1.5 rounded-xs hover:scale-105 active:scale-95 transition-all pointer-events-auto flex items-center gap-1.5 text-gold-300 text-xs font-serif shadow-md cursor-pointer"
+            title="展开八荒异闻">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold-500 animate-pulse" />
+            <span className="font-bold tracking-wider">八荒异闻</span>
           </motion.button>
         )}
       </AnimatePresence>
@@ -1081,7 +1173,7 @@ export const GameScreen: React.FC = () => {
           <motion.div key="collapsed" initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
             transition={{ duration: 0.3 }} className="fixed bottom-4 right-4 z-30">
             <button onClick={() => setIsTextBoxCollapsed(false)}
-              className="p-2 bg-ink-900/90 border border-cyan-900/50 text-cyan-400 hover:bg-cyan-900/40 transition-colors rounded"
+              className="p-2 bg-[#181410]/90 border border-[#6b583e] text-gold-300 hover:bg-[#282118] transition-colors rounded-xs"
               title="展开文本框">
               <ChevronUp className="w-5 h-5" />
             </button>
@@ -1093,7 +1185,7 @@ export const GameScreen: React.FC = () => {
             {/* 折叠按钮 */}
             <div className="absolute -top-3 right-6 md:right-12 z-40">
               <button onClick={(e) => { e.stopPropagation(); setIsTextBoxCollapsed(true); }}
-                className="p-1 bg-ink-900/70 text-paper-200 hover:bg-vermilion-900/60 transition-colors rounded border border-ink-700"
+                className="p-1 bg-[#181410]/90 text-paper-200 hover:bg-[#282118] transition-colors rounded-xs border border-[#423522]"
                 title="折叠文本框">
                 <ChevronDown className="w-4 h-4" />
               </button>
@@ -1103,13 +1195,13 @@ export const GameScreen: React.FC = () => {
             <AnimatePresence mode="wait">
               {currentLine.type !== 'narrator' && (
                 <motion.div key={currentLine.speaker} initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}
-                  className="absolute -top-12 md:-top-16 left-6 md:left-12 z-30 flex items-end gap-3 drop-shadow-[4px_4px_0_rgba(0,0,0,0.5)]">
+                  className="absolute -top-12 md:-top-16 left-6 md:left-12 z-30 flex items-end gap-3 drop-shadow-[4px_4px_0_rgba(0,0,0,0.6)]">
                   {currentLine.avatar && (
-                    <div className={`w-16 h-16 md:w-20 md:h-20 bg-white border-4 flex items-center justify-center overflow-hidden relative transform -skew-x-6 ${isCyan ? 'border-cyan-500' : 'border-vermilion-500'}`}>
+                    <div className={`w-16 h-16 md:w-20 md:h-20 bg-[#181410] border-2 flex items-center justify-center overflow-hidden relative transform -skew-x-3 ${isCyan ? 'border-cyan-700' : 'border-vermilion-700'}`}>
                       <img src={currentLine.avatar} alt="avatar" className="w-full h-full object-cover object-top scale-110" />
                     </div>
                   )}
-                  <div className={`px-4 md:px-6 py-1 md:py-2 border-4 ${themeBorderClass} ${themeBgClass} text-xl md:text-2xl font-serif italic -skew-x-6 ${themeTextClass} mb-1 shadow-[2px_2px_0_rgba(0,0,0,0.5)]`}>
+                  <div className={`px-4 md:px-6 py-1 md:py-2 border-2 ${themeBorderClass} ${themeBgClass} text-xl md:text-2xl font-serif italic -skew-x-3 ${themeTextClass} mb-1 shadow-[2px_2px_0_rgba(0,0,0,0.6)]`}>
                     {displayName(currentLine.speaker!, playerName)}
                     {currentLine.emotion && currentLine.emotion !== '默认' && (
                       <span className="ml-2 text-sm font-sans opacity-70">[{currentLine.emotion}]</span>
@@ -1120,68 +1212,115 @@ export const GameScreen: React.FC = () => {
             </AnimatePresence>
 
             {/* 主文本框 */}
-            <div className="h-full w-full relative flex flex-col p-4"
+            <div className="h-full w-full relative flex flex-col p-4 bg-[#14100c]/85 border border-[#52432d] rounded-xs shadow-2xl backdrop-blur-md"
               style={{ paddingTop: currentLine.type === 'narrator' ? '1.5rem' : '3.5rem' }}>
               {/* 调查模式提示 */}
-              {isInvestigating && (
+              {isInvestigating && !isInputMode && (
                 <div className="text-gold-400 font-sans text-xs tracking-widest animate-pulse mb-2 z-10">
                   调查模式已开启，请长按或滑动选择文本
                 </div>
               )}
-              <div
-                className={`flex-1 overflow-y-auto hide-scrollbar text-xl md:text-[26px] font-sans tracking-[0.1em] leading-[2] z-10 ${currentLine.type === 'thought' ? 'text-cyan-400' : 'text-paper-100'} ${isInvestigating ? 'select-text cursor-text' : 'select-none'}`}
-                style={isInvestigating ? { WebkitTouchCallout: 'default', WebkitUserSelect: 'text', userSelect: 'text', willChange: 'contents' } : { willChange: 'contents' }}
-              >
-                {displayedText}
-                {isTyping && <span className={`inline-block w-3 h-6 animate-pulse ml-1 align-middle ${currentLine.type === 'thought' ? 'bg-cyan-400' : 'bg-paper-100'}`} />}
-              </div>
+              {isInputMode ? (
+                /* ── 输入模式：文本区变为输入框 ── */
+                <div className="flex-1 flex flex-col min-h-0 z-10" onClick={(e) => e.stopPropagation()}>
+                  <textarea
+                    ref={inputTextareaRef}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    placeholder={isGenerating ? '❖ 灵枢运转 · 案情推演中...' : '起草奏呈 / 决断言行...（Enter 呈递，Esc 收合）'}
+                    disabled={isGenerating}
+                    autoComplete="off"
+                    autoCapitalize="sentences"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="flex-1 w-full bg-[#1b130c]/90 text-paper-100 font-serif p-3 border border-[#52432d] resize-none
+                               placeholder:text-paper-600 placeholder:font-serif focus:outline-none focus:border-gold-500
+                               transition-all rounded-xs text-base md:text-lg leading-relaxed shadow-inner
+                               disabled:opacity-50 custom-scrollbar"
+                  />
+                </div>
+              ) : (
+                /* ── 显示模式：剧情文本 ── */
+                <div
+                  className={`flex-1 overflow-y-auto hide-scrollbar text-xl md:text-[26px] font-serif tracking-[0.08em] leading-loose z-10 ${currentLine.type === 'thought' ? 'text-gold-300 italic' : 'text-paper-100'} ${isInvestigating ? 'select-text cursor-text' : 'select-none'}`}
+                  style={isInvestigating ? { WebkitTouchCallout: 'default', WebkitUserSelect: 'text', userSelect: 'text', willChange: 'contents' } : { willChange: 'contents' }}
+                >
+                  {displayedText}
+                  {isTyping && <span className={`inline-block w-3 h-6 animate-pulse ml-1 align-middle ${currentLine.type === 'thought' ? 'bg-gold-300' : 'bg-paper-50'}`} />}
+                </div>
+              )}
 
               {/* 按钮组 */}
               <div className="flex justify-between items-end mt-4 z-10">
+                {isInputMode ? (
+                  /* ── 输入模式：呈递 / 收合 ── */
+                  <div className="flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={handleSendInput} disabled={!inputText.trim() || isGenerating}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-vermilion-800 hover:bg-vermilion-700 border border-vermilion-600 text-paper-50 rounded-xs text-xs sm:text-sm font-serif font-bold tracking-widest transition-all shadow-sm active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                      {isGenerating ? <Loader className="w-3.5 h-3.5 animate-spin text-gold-300" /> : <Send className="w-3.5 h-3.5 text-gold-300" />}
+                      呈 递
+                    </button>
+                    <button onClick={handleExitInputMode} disabled={isGenerating}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#1a120b]/90 border border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700 transition-all rounded-xs text-xs sm:text-sm font-serif cursor-pointer disabled:opacity-30">
+                      <X className="w-3.5 h-3.5" /> 收合
+                    </button>
+                  </div>
+                ) : (
+                  /* ── 显示模式：原有按钮 ── */
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={(e) => { e.stopPropagation(); setShowBacklog(true); }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-sm">
-                    <History className="w-4 h-4" /> 历史
+                    id="btn-dialogue-backlog"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-[#1f150e]/90 border border-[#6b583e] text-gold-300 hover:text-paper-50 hover:border-gold-500 hover:bg-[#2b1e14] transition-all rounded-xs text-xs sm:text-sm font-serif cursor-pointer shadow-sm">
+                    <History className="w-3.5 h-3.5" /> 案录
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); handlePrev(); }} disabled={currentIndex === 0}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-sm disabled:opacity-30">
-                    <ChevronLeft className="w-4 h-4" /> 上一句
+                    className="flex items-center gap-1 px-3 py-1.5 bg-[#1a120b]/90 border border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700 transition-all rounded-xs text-xs sm:text-sm font-serif disabled:opacity-30 cursor-pointer">
+                    <ChevronLeft className="w-3.5 h-3.5" /> 上句
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); setIsAutoMode(prev => !prev); }}
-                    className={`flex items-center gap-1 px-3 py-1.5 border transition-colors rounded text-sm ${isAutoMode ? 'bg-cyan-900/60 border-cyan-500 text-cyan-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50'}`}
-                    title={isAutoMode ? '关闭 Auto' : '开启 Auto'}>
-                    {isAutoMode ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    <span className="hidden sm:inline">{isAutoMode ? 'Auto' : 'Auto'}</span>
+                    className={`flex items-center gap-1 px-3 py-1.5 border transition-all rounded-xs text-xs sm:text-sm font-serif cursor-pointer ${isAutoMode ? 'bg-vermilion-800 border-vermilion-600 text-paper-50 shadow-sm font-bold' : 'bg-[#1a120b]/90 border border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700'}`}
+                    title={isAutoMode ? '关闭 自动' : '开启 自动'}>
+                    {isAutoMode ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">自动</span>
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); const next = textSpeed >= 3 ? 1 : textSpeed + 1; textSettings.setTextSpeed(next); }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-ink-800/60 border border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors rounded text-sm"
-                    title={`速度: ${textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}`}>
-                    {textSpeed >= 3 ? <Zap className="w-4 h-4 text-gold-400" /> : <FastForward className="w-4 h-4" />}
-                    <span className="hidden sm:inline">{textSpeed === 0 ? '瞬间' : textSpeed === 1 ? '慢' : textSpeed === 2 ? '普通' : '快'}</span>
+                    className="flex items-center gap-1 px-3 py-1.5 bg-[#1a120b]/90 border border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700 transition-all rounded-xs text-xs sm:text-sm font-serif cursor-pointer"
+                    title={`语速: ${textSpeed === 0 ? '瞬发' : textSpeed === 1 ? '舒缓' : textSpeed === 2 ? '适中' : '迅疾'}`}>
+                    {textSpeed >= 3 ? <Zap className="w-3.5 h-3.5 text-gold-300" /> : <FastForward className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">{textSpeed === 0 ? '瞬发' : textSpeed === 1 ? '舒缓' : textSpeed === 2 ? '适中' : '迅疾'}</span>
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); setIsInvestigating(!isInvestigating); }}
-                    className={`flex items-center gap-1 px-3 py-1.5 border transition-colors rounded text-sm ${isInvestigating ? 'bg-gold-900/60 border-gold-500 text-gold-300' : 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-gold-400 hover:border-gold-500/50'}`}
-                    title={isInvestigating ? '关闭调查' : '开启调查'}>
-                    <Search className="w-4 h-4" />
-                    <span className="hidden sm:inline">调查</span>
+                    className={`flex items-center gap-1 px-3 py-1.5 border transition-all rounded-xs text-xs sm:text-sm font-serif cursor-pointer ${isInvestigating ? 'bg-vermilion-800 border-vermilion-400 text-paper-50 font-bold shadow-md' : 'bg-[#1a120b]/90 border border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700'}`}
+                    title={isInvestigating ? '收合勘验' : '开启勘验'}>
+                    <Search className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">勘验</span>
+                  </button>
+                  {/* 呈递按钮 — 切换到输入模式 */}
+                  <button onClick={(e) => { e.stopPropagation(); handleEnterInputMode(); }}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-vermilion-800 border border-vermilion-600 text-paper-50 hover:bg-vermilion-700 transition-all rounded-xs text-xs sm:text-sm font-serif font-bold tracking-widest cursor-pointer shadow-sm"
+                    title="起草奏呈">
+                    <Send className="w-3.5 h-3.5 text-gold-300" />
+                    <span>呈 递</span>
                   </button>
                 </div>
+                )}
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={handlePrevFloor} disabled={!canPrevFloor}
-                    className={`flex items-center gap-1 px-3 py-1.5 border transition-colors rounded text-sm ${canPrevFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
-                    title="上一楼层">
-                    <ChevronUp className="w-4 h-4" />
-                    <span className="hidden sm:inline">上层</span>
+                    className={`flex items-center gap-1 px-2.5 py-1.5 border transition-all rounded-xs text-xs font-serif ${canPrevFloor ? 'bg-[#1a120b]/90 border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700 cursor-pointer' : 'bg-[#120d09]/50 border-[#382a1b]/40 text-ink-600 cursor-not-allowed'}`}
+                    title="翻阅上卷">
+                    <ChevronUp className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">上卷</span>
                   </button>
                   <button onClick={handleNextFloor} disabled={!canNextFloor}
-                    className={`flex items-center gap-1 px-3 py-1.5 border transition-colors rounded text-sm ${canNextFloor ? 'bg-ink-800/60 border-ink-700/50 text-paper-200 hover:text-cyan-400 hover:border-cyan-500/50' : 'bg-ink-800/30 border-ink-700/30 text-ink-500 cursor-not-allowed'}`}
-                    title="下一楼层">
-                    <ChevronDown className="w-4 h-4" />
-                    <span className="hidden sm:inline">下层</span>
+                    className={`flex items-center gap-1 px-2.5 py-1.5 border transition-all rounded-xs text-xs font-serif ${canNextFloor ? 'bg-[#1a120b]/90 border-[#52432d] text-paper-400 hover:text-paper-50 hover:border-gold-700 cursor-pointer' : 'bg-[#120d09]/50 border-[#382a1b]/40 text-ink-600 cursor-not-allowed'}`}
+                    title="翻阅下卷">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">下卷</span>
                   </button>
                   {!isTyping && (
-                    <motion.div animate={{ x: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 1 }}>
-                      <ChevronRight className="w-8 h-8 text-gold-400" />
+                    <motion.div animate={{ x: [0, 6, 0] }} transition={{ repeat: Infinity, duration: 1 }}>
+                      <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 text-gold-300" />
                     </motion.div>
                   )}
                 </div>
@@ -1197,7 +1336,7 @@ export const GameScreen: React.FC = () => {
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
             className="absolute inset-0 z-35 bg-ink-900/85 backdrop-blur-md flex items-center justify-center p-4">
             <button onClick={() => setOptionsDismissed(true)}
-              className="absolute top-4 right-4 z-40 p-2 bg-gold-500 text-ink-900 hover:scale-110 transition-transform rounded font-serif"
+              className="absolute top-4 right-4 z-40 p-2 bg-gold-500 text-[#0e0b08] hover:scale-110 transition-transform rounded-xs font-serif"
               title="关闭选项">
               <X className="w-5 h-5" />
             </button>
@@ -1206,15 +1345,15 @@ export const GameScreen: React.FC = () => {
               className="w-full max-w-2xl flex flex-col gap-3 relative z-10">
               {options.map((option, i) => {
                 const colorScheme = i % 2 === 0
-                  ? "bg-cyan-900/60 border-cyan-500/50 text-cyan-300"
-                  : "bg-vermilion-900/60 border-vermilion-500/50 text-vermilion-300";
+                  ? "bg-[#20180f]/90 border-gold-700/70 text-gold-300"
+                  : "bg-[#25100c]/90 border-vermilion-700/70 text-[#f59e93]";
                 return (
                   <motion.button key={i} initial={{ opacity: 0, x: -40 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.15 + i * 0.08, type: "spring", damping: 18 }}
                     onClick={() => handleSelectOption(option)}
                     className={cn(
-                      "flex items-center gap-4 p-4 border-2 font-serif text-left rounded",
-                      "hover:scale-[1.03] active:scale-95 transition-all duration-150 group relative overflow-hidden",
+                      "flex items-center gap-4 p-4 border-2 font-serif text-left rounded-xs",
+                      "hover:scale-[1.02] active:scale-95 transition-all duration-150 group relative overflow-hidden shadow-lg",
                       colorScheme
                     )}>
                     {optionChibis[i] && (
@@ -1234,38 +1373,140 @@ export const GameScreen: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ════ 历史记录侧边栏 ════ */}
+      {/* ════ 历史记录竖屏折卷展开（非侧边栏，竖向铺展长卷） ════ */}
       <AnimatePresence>
         {showBacklog && (
-          <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute inset-y-0 left-0 w-full md:w-96 bg-ink-900/95 backdrop-blur-md z-50 flex flex-col border-r-2 border-cyan-900/50">
-            <div className="p-4 bg-cyan-900/40 text-cyan-300 font-serif text-xl flex justify-between items-center border-b border-ink-700">
-              <span className="tracking-widest">回忆记录</span>
-              <button onClick={() => setShowBacklog(false)}
-                className="text-2xl hover:scale-110 active:scale-90 transition-transform text-paper-200 hover:text-vermilion-400">&times;</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-              {script.slice(0, currentIndex).map((log, idx) => (
-                <div key={idx} className="space-y-2 border-b border-ink-700/50 pb-4 relative">
-                  {log.type === 'narrator' ? (
-                    <div className="text-paper-200/70 text-base bg-ink-800/50 p-3 rounded border border-ink-700/50 font-serif italic">{log.text}</div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2">
-                        {log.avatar && <img src={log.avatar} alt="avatar" className="w-8 h-8 rounded-full object-cover object-top border border-ink-700" />}
-                        <div className={`font-serif text-sm px-2 py-0.5 -skew-x-6 ${getCharacterThemeColor(log.speaker) === 'cyan' ? 'bg-cyan-900/60 text-cyan-300' : 'bg-vermilion-900/60 text-vermilion-300'}`}>
-                          {displayName(log.speaker!, playerName)}
-                          {log.emotion && log.emotion !== '默认' && <span className="ml-1 opacity-70">[{log.emotion}]</span>}
-                        </div>
-                      </div>
-                      <div className={`text-base font-serif pl-10 ${log.type === 'thought' ? 'text-cyan-400/80 italic' : 'text-paper-200'}`}>{log.text}</div>
-                    </>
-                  )}
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8 bg-[#080503]/85 backdrop-blur-md">
+            {/* 点击背景关闭 */}
+            <div className="absolute inset-0" onClick={() => setShowBacklog(false)} />
+
+            {/* 竖屏展开的宣纸卷轴折子 */}
+            <motion.div
+              initial={{ opacity: 0, scaleY: 0.85, y: 30 }}
+              animate={{ opacity: 1, scaleY: 1, y: 0 }}
+              exit={{ opacity: 0, scaleY: 0.85, y: 30 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              className="relative w-full max-w-2xl h-[88vh] bg-[#140e0a]/98 border-2 border-[#78591c] rounded-xs shadow-[0_20px_60px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden font-serif z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 四角仿古铜包角 */}
+              <div className="absolute top-1 left-1 w-5 h-5 border-t-2 border-l-2 border-gold-500 pointer-events-none z-20" />
+              <div className="absolute top-1 right-1 w-5 h-5 border-t-2 border-r-2 border-gold-500 pointer-events-none z-20" />
+              <div className="absolute bottom-1 left-1 w-5 h-5 border-b-2 border-l-2 border-gold-500 pointer-events-none z-20" />
+              <div className="absolute bottom-1 right-1 w-5 h-5 border-b-2 border-r-2 border-gold-500 pointer-events-none z-20" />
+
+              {/* 顶栏木匾标题 */}
+              <div className="relative px-6 py-4 bg-[#1f150d] border-b border-[#52432d] flex items-center justify-between shrink-0 shadow-md">
+                <div className="flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-vermilion-800 border border-vermilion-600" />
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold tracking-[0.3em] text-paper-50">
+                      案 卷 溯 回 · 对 白 录
+                    </h2>
+                    <p className="text-[11px] text-paper-400 tracking-wider mt-0.5">
+                      共 {script.slice(0, currentIndex).length} 条案牍对白 · 竖屏卷轴
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </motion.div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowBacklog(false)}
+                    className="px-3.5 py-1 bg-[#2a1d12] hover:bg-[#3d2a1a] border border-[#78591c] text-gold-300 hover:text-paper-50 rounded-xs text-xs tracking-widest transition-all cursor-pointer"
+                  >
+                    收合案录
+                  </button>
+                </div>
+              </div>
+
+              {/* 竖向卷轴正文内容 */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar bg-[radial-gradient(ellipse_at_top,rgba(35,24,15,0.4)_0%,transparent_80%)] select-text">
+                {script.slice(0, currentIndex).length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-paper-600 tracking-widest text-sm space-y-2 py-16">
+                    <span>❖ 暂无前尘案情 ❖</span>
+                    <span className="text-xs text-[#6b583e]">请继续推进断案</span>
+                  </div>
+                ) : (
+                  script.slice(0, currentIndex).map((log, idx) => {
+                    const isUser = log.speaker === 'user' || log.speaker === playerName;
+                    const isNarrator = log.type === 'narrator';
+                    const isThought = log.type === 'thought';
+
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(idx * 0.02, 0.3) }}
+                        className={cn(
+                          "relative rounded-xs p-3.5 border transition-all",
+                          isNarrator
+                            ? "bg-[#18110a]/60 border-[#3d2e1c] text-paper-400 italic text-sm leading-relaxed"
+                            : isUser
+                              ? "bg-[#20150e]/90 border-[#78591c]/80 ml-4 sm:ml-10"
+                              : "bg-[#16100b]/90 border-[#4a3925] mr-4 sm:mr-10"
+                        )}
+                      >
+                        {/* 说话者标贴 */}
+                        {!isNarrator && (
+                          <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-[#3d2e1c]">
+                            {log.avatar ? (
+                              <img
+                                src={log.avatar}
+                                alt={log.speaker}
+                                className="w-6 h-6 rounded-full object-cover object-top border border-[#78591c]"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-[#2a1d12] border border-[#78591c] flex items-center justify-center text-[10px] text-gold-300">
+                                {log.speaker?.[0] || '人'}
+                              </div>
+                            )}
+                            <span className={cn(
+                              "text-xs font-bold tracking-wider",
+                              isUser ? "text-vermilion-400" : "text-gold-300"
+                            )}>
+                              {displayName(log.speaker!, playerName)}
+                            </span>
+                            {log.emotion && log.emotion !== '默认' && (
+                              <span className="text-[10px] text-paper-500 px-1.5 py-0.2 bg-[#120d09] border border-[#3d2e1c] rounded-xs">
+                                {log.emotion}
+                              </span>
+                            )}
+                            <span className="ml-auto text-[10px] text-[#6b583e] font-mono">
+                              #{idx + 1}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* 对白正文 */}
+                        <div className={cn(
+                          "font-serif tracking-wide leading-relaxed text-sm sm:text-base",
+                          isNarrator
+                            ? "text-paper-400"
+                            : isThought
+                              ? "text-gold-300/90 italic pl-1"
+                              : "text-paper-50"
+                        )}>
+                          {log.text}
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* 底栏状态与便捷跳至最新 */}
+              <div className="px-6 py-2.5 bg-[#17100b] border-t border-[#3d2e1c] flex items-center justify-between shrink-0 text-xs text-paper-600">
+                <span>按序翻阅 · 竖屏长卷折子</span>
+                <button
+                  onClick={() => setShowBacklog(false)}
+                  className="text-gold-300 hover:text-paper-50 tracking-wider transition-colors cursor-pointer"
+                >
+                  返回当下 ↵
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -1274,65 +1515,13 @@ export const GameScreen: React.FC = () => {
       <HistoryLogModal isOpen={activeModal === 'history'} onClose={() => setActiveModal(null)} />
       <ClueNotebookModal isOpen={activeModal === 'clues'} onClose={() => setActiveModal(null)} />
       <CalendarModal isOpen={activeModal === 'calendar'} onClose={() => setActiveModal(null)} />
+      <ThinkingModal isOpen={activeModal === 'thinking'} onClose={() => setActiveModal(null)} />
+      <VariablesModal isOpen={activeModal === 'variables'} onClose={() => setActiveModal(null)} />
+      <ManualModal isOpen={activeModal === 'manual'} onClose={() => setActiveModal(null)} />
+<DeleteFloorModal isOpen={activeModal === 'delete'} onClose={() => setActiveModal(null)} />
 
-      {/* 待接入模态框占位 */}
-      {activeModal === 'thinking' && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-          <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-          <div className="relative bg-ink-800 border border-cyan-900/50 rounded-xl p-8 max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl text-cyan-400 tracking-widest mb-4">思维链</h2>
-            <p className="text-paper-200 text-sm">思维链查看功能待接入。</p>
-            <button onClick={() => setActiveModal(null)} className="mt-4 text-ink-500 hover:text-cyan-400 text-sm">关闭</button>
-          </div>
-        </div>
-      )}
-      {activeModal === 'variables' && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-          <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-          <div className="relative bg-ink-800 border border-gold-900/50 rounded-xl p-8 max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl text-gold-400 tracking-widest mb-4">变量查看</h2>
-            <p className="text-paper-200 text-sm">变量查看器待接入。</p>
-            <button onClick={() => setActiveModal(null)} className="mt-4 text-ink-500 hover:text-gold-400 text-sm">关闭</button>
-          </div>
-        </div>
-      )}
-      {activeModal === 'delete' && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-          <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-          <div className="relative bg-ink-800 border border-vermilion-900/50 rounded-xl p-8 max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-xl text-vermilion-400 tracking-widest mb-4">删除楼层</h2>
-            <p className="text-paper-200 text-sm">删除楼层功能待接入。</p>
-            <button onClick={() => setActiveModal(null)} className="mt-4 text-ink-500 hover:text-vermilion-400 text-sm">关闭</button>
-          </div>
-        </div>
-      )}
-      {activeModal === 'manual' && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center" onClick={() => setActiveModal(null)}>
-          <div className="absolute inset-0 bg-ink-900/80 backdrop-blur-sm" />
-          <div className="relative bg-ink-800 border border-gold-900/50 rounded-xl p-8 max-w-lg max-h-[80vh] overflow-y-auto custom-scrollbar" onClick={e => e.stopPropagation()}>
-            <h2 className="font-serif text-2xl text-gold-400 tracking-widest mb-6">说明书</h2>
-            <div className="space-y-4 text-paper-200 text-sm leading-relaxed">
-              <section>
-                <h3 className="font-serif text-cyan-400 tracking-widest mb-2">基本操作</h3>
-                <p>点击屏幕或按 →/Enter 推进剧情。按 ← 回看上一句。Ctrl 快进。</p>
-              </section>
-              <section>
-                <h3 className="font-serif text-cyan-400 tracking-widest mb-2">文本框</h3>
-                <p>点击文本框推进剧本。可折叠/展开。底部按钮提供历史、上一句、Auto、速度、楼层翻页功能。</p>
-              </section>
-              <section>
-                <h3 className="font-serif text-gold-400 tracking-widest mb-2">工具栏</h3>
-                <p>顶部工具栏提供全屏、楼层导航、地图、时辰、剧情回顾、思维链、变量、删除、重生成、设置等功能。</p>
-              </section>
-            </div>
-            <button onClick={() => setActiveModal(null)} className="mt-6 px-6 py-2 bg-cyan-900/40 border border-cyan-900/50 text-cyan-300 rounded font-serif tracking-widest hover:bg-cyan-800/40 transition-colors">关闭</button>
-          </div>
-        </div>
-      )}
-
-      <TextSelectionClue />
-      <ChatInputWidget />
-      <MusicPlayerWidget />
+<TextSelectionClue />
+<MusicPlayerWidget />
     </motion.div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { useIsMobile } from '../../hooks';
 
 interface ModalProps {
   isOpen: boolean;
@@ -14,10 +15,11 @@ interface ModalProps {
 }
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, id, fullScreen = false, onToggleFullScreen, variant = 'default' }) => {
+  const isMobile = useIsMobile();
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-auto p-4 sm:p-6" id={id}>
+        <div className={"fixed inset-0 z-40 flex items-center justify-center pointer-events-auto " + (isMobile ? "p-0" : "p-4 sm:p-6")} id={id}>
           {/* Backdrop with ink wash blur */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -35,7 +37,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
             transition={{ type: "spring", stiffness: 350, damping: 28 }}
             className={`relative flex flex-col overflow-hidden ${
               variant === 'default'
-                ? `bg-gradient-to-b from-ink-900 via-ink-850 to-ink-950 border border-gold-500/35 shadow-[0_20px_60px_rgba(0,0,0,0.9)] ${fullScreen ? 'w-full h-full rounded-none border-0' : 'w-full max-w-4xl max-h-[88vh] rounded-xl'}`
+                ? `bg-linear-to-b from-ink-900 via-ink-850 to-ink-950 border border-gold-500/35 shadow-[0_20px_60px_rgba(0,0,0,0.9)] ${fullScreen ? 'w-full h-full rounded-none border-0' : isMobile ? 'w-full h-full rounded-none border-0' : 'w-full max-w-4xl max-h-[88vh] rounded-xl'}`
                 : `w-full h-full sm:w-[96vw] sm:h-[94vh] shadow-2xl ${fullScreen ? 'w-full h-full sm:w-full sm:h-full rounded-none' : 'rounded-sm'}`
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -62,16 +64,16 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
                 />
 
                 {/* Header (Ancient Plaque Style) */}
-                <div className="flex items-center justify-between px-8 py-5 border-b border-gold-500/20 bg-ink-950/70 relative overflow-hidden shrink-0">
+                <div className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-5 border-b border-gold-500/20 bg-ink-950/70 relative overflow-hidden shrink-0">
                   {/* Decorative side accent */}
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-gold-400 via-vermilion-500 to-cyan-500" />
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-linear-to-b from-gold-400 via-vermilion-500 to-cyan-500" />
 
-                  <div className="flex items-center gap-3 pl-2">
-                    <span className="text-gold-400 opacity-60 font-serif text-sm">❖</span>
-                    <h2 className="font-serif text-2xl text-paper-100 tracking-[0.25em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  <div className="flex items-center gap-2 sm:gap-3 pl-2 min-w-0">
+                    <span className="text-gold-400 opacity-60 font-serif text-sm hidden sm:inline">❖</span>
+                    <h2 className="font-serif text-lg sm:text-2xl text-paper-100 tracking-[0.15em] sm:tracking-[0.25em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] truncate">
                       {title}
                     </h2>
-                    <span className="text-gold-400 opacity-60 font-serif text-sm">❖</span>
+                    <span className="text-gold-400 opacity-60 font-serif text-sm hidden sm:inline">❖</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -96,12 +98,12 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
                 </div>
 
                 {/* Classical Divider under header */}
-                <div className="w-full h-px bg-gradient-to-r from-transparent via-gold-500/40 to-transparent shrink-0" />
+                <div className="w-full h-px bg-linear-to-r from-transparent via-gold-500/40 to-transparent shrink-0" />
               </>
             )}
 
             {/* Content */}
-            <div className={`flex-1 overflow-y-auto custom-scrollbar relative z-10 ${variant === 'default' ? (fullScreen ? '' : 'p-6 sm:p-8') : ''}`}>
+            <div className={`flex-1 overflow-y-auto custom-scrollbar relative z-10 ${variant === 'default' ? (fullScreen || isMobile ? 'p-3 sm:p-6' : 'p-6 sm:p-8') : ''}`}>
               {children}
             </div>
           </motion.div>

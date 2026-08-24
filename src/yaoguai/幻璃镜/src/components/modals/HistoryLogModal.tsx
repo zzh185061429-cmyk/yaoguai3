@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal';
+import { cn } from '../../utils';
 
 interface HistoryLogModalProps {
   isOpen: boolean;
@@ -12,8 +13,7 @@ interface HistoryEntry {
 }
 
 /**
- * 剧情回顾 — 扫描最近的 assistant 楼层，提取 <content> 正文，按楼层顺序展示
- * （移植自租借男友 ReadingModal，替换原先的硬编码演示对话）
+ * 案卷溯回（历史记录） — 竖屏长卷展开，展现历次断案正文
  */
 export const HistoryLogModal: React.FC<HistoryLogModalProps> = ({ isOpen, onClose }) => {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -21,69 +21,83 @@ export const HistoryLogModal: React.FC<HistoryLogModalProps> = ({ isOpen, onClos
   useEffect(() => {
     if (!isOpen) return;
     try {
-      const messages = getChatMessages(`0-{{lastMessageId}}`, { role: 'assistant' });
-      // 只取最近 10 层，避免超长聊天卡顿
-      const latestMessages = messages.slice(-10);
+      const g = typeof window !== 'undefined' ? window : (globalThis as any);
+      const getMsgs = g.getChatMessages || ((globalThis as any).getChatMessages);
+      const messages = typeof getMsgs === 'function' 
+        ? getMsgs(`0-{{lastMessageId}}`, { role: 'assistant' })
+        : [];
+      
+      // 只取最近 15 层，按序展示
+      const latestMessages = messages.slice(-15);
       const result: HistoryEntry[] = [];
 
       for (const msg of latestMessages) {
-        // 步骤 1：剥离思维链（防止思维链中误出现 <content> 标签干扰提取）
-        const stripped = msg.message
+        // 步骤 1：剥离思维链
+        const stripped = (msg.message || '')
           .replace(/<Chain_of_Thought>[\s\S]*?<\/Chain_of_Thought>/gi, '')
           .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
           .replace(/<think>[\s\S]*?<\/think>/gi, '')
           .replace(/<simple_thinking>[\s\S]*?<\/simple_thinking>/gi, '')
           .replace(/<draft>[\s\S]*?<\/draft>/gi, '');
 
-        // 步骤 2：仅提取 <content>...</content> 内的内容
+        // 步骤 2：提取 <content>...</content> 内的内容
         const contentMatch = stripped.match(/<content>([\s\S]*?)<\/content>/i);
         const cleaned = contentMatch
           ? contentMatch[1].replace(/\n{3,}/g, '\n\n').trim()
           : stripped.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
 
         if (cleaned) {
-          result.push({ floorId: msg.message_id, text: cleaned });
+          result.push({ floorId: msg.message_id ?? msg.mesid ?? 0, text: cleaned });
         }
       }
 
       setEntries(result);
     } catch {
-      console.warn('[幻璃镜] 历史记录扫描楼层失败');
+      console.warn('[幻璃镜] 案卷溯回扫描失败');
       setEntries([]);
     }
   }, [isOpen]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="历 史 / HISTORY" id="history-log-modal">
-      <div className="space-y-8 pl-4 pr-6">
-        {entries.length === 0 && (
-          <div className="text-center py-12 text-paper-200/50 font-serif tracking-widest">暂无剧情内容</div>
-        )}
-        {entries.map((entry, index) => (
-          <div key={entry.floorId} className="relative group">
-            {/* Decorative line connecting logs */}
-            {index !== entries.length - 1 && (
-              <div className="absolute left-[11px] top-8 bottom-[-32px] w-[2px] bg-ink-700/50 group-hover:bg-ink-600 transition-colors" />
-            )}
+    <Modal isOpen={isOpen} onClose={onClose} title="案 卷 溯 回 · 历 史 录" id="history-log-modal">
+      <div className="space-y-4 sm:space-y-6 px-1 sm:px-4 py-2 font-serif select-text">
+        {entries.length === 0 ? (
+          <div className="text-center py-16 text-paper-600 tracking-widest text-sm space-y-2">
+            <div>❖ 案牍清朗 · 暂无前卷 ❖</div>
+            <div className="text-xs text-[#6b583e]">推进问卜断案后，此卷将自动载录历史</div>
+          </div>
+        ) : (
+          entries.map((entry, index) => (
+            <div key={entry.floorId} className="relative group">
+              {/* 贯通的古铜色装订垂线 */}
+              {index !== entries.length - 1 && (
+                <div className="absolute left-3.5 top-7 -bottom-4 sm:-bottom-6 w-px bg-linear-to-b from-gold-700 via-ink-800 to-transparent pointer-events-none" />
+              )}
 
-            <div className="flex gap-6 items-start relative">
-              {/* Timeline node */}
-              <div className="mt-1.5 shrink-0 w-[24px] h-[24px] rounded-full border-2 border-cyan-500 bg-ink-900 flex items-center justify-center shadow-lg text-cyan-500">
-                <div className="w-2 h-2 rounded-full bg-cyan-500" />
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 bg-ink-800/30 p-4 rounded-lg border border-transparent hover:border-ink-700/50 transition-colors">
-                <div className="font-serif text-sm mb-2 tracking-widest text-cyan-400/70">
-                  ◆ 第 {entry.floorId} 幕 ◆
+              <div className="flex gap-3 sm:gap-5 items-start relative">
+                {/* 仿古朱漆印章节点 */}
+                <div className="mt-1 shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-gold-700 bg-[#1a120b] flex items-center justify-center shadow-md text-gold-300 text-[9px] sm:text-[10px] font-bold">
+                  {entry.floorId}
                 </div>
-                <div className="text-paper-200 leading-relaxed font-sans font-light tracking-wide text-[15px] whitespace-pre-wrap">
-                  {entry.text}
+
+                {/* 案卷正文宣纸卡片 */}
+                <div className="flex-1 bg-[#140e0a]/90 p-3 sm:p-5 rounded-xs border border-[#4a3925] hover:border-gold-700 transition-all shadow-md space-y-2">
+                  <div className="flex items-center justify-between border-b border-[#382a1b] pb-2">
+                    <span className="text-xs font-bold tracking-widest text-gold-300">
+                      【 第 {entry.floorId} 卷 · 勘案录 】
+                    </span>
+                    <span className="text-[10px] text-paper-600 tracking-wider">
+                      镇抚司档案
+                    </span>
+                  </div>
+                  <div className="text-paper-50 leading-relaxed text-xs sm:text-base tracking-wide whitespace-pre-wrap">
+                    {entry.text}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </Modal>
   );

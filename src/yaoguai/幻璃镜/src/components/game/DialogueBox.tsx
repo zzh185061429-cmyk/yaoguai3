@@ -21,7 +21,7 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({
   isAuto, isSkip, onToggleAuto, onToggleSkip
 }) => {
   const { displayedText, isTyping, skip } = useTypewriter(line.text, 40);
-  const { addNotification, isInvestigating, setIsInvestigating } = useGameContext();
+  const { isInvestigating, setIsInvestigating } = useGameContext();
 
   React.useEffect(() => {
     if (!isTyping) {
@@ -44,18 +44,17 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({
       return;
     }
 
-    // If the user has text selected, don't advance dialogue
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
       return;
     }
 
     if (isSkip) {
-      onToggleSkip(); // stop skipping on click
+      onToggleSkip();
       return;
     }
     if (isAuto) {
-      onToggleAuto(); // stop auto on click
+      onToggleAuto();
     }
     if (isTyping) {
       skip();
@@ -64,88 +63,83 @@ export const DialogueBox: React.FC<DialogueBoxProps> = ({
     }
   };
 
-  const isCyan = character?.themeColor === 'cyan';
-  const themeColorClass = isCyan ? 'text-cyan-400 border-cyan-500/50' : 'text-vermilion-400 border-vermilion-500/50';
-  const bgGlowClass = isCyan ? 'from-cyan-900/30' : 'from-vermilion-900/30';
+  const isRed = character?.themeColor !== 'cyan';
 
   const quickActions = [
-    { id: 'auto', label: '自动', sub: 'AUTO', action: onToggleAuto, active: isAuto },
-    { id: 'skip', label: '快进', sub: 'SKIP', action: onToggleSkip, active: isSkip },
-    { id: 'investigate', label: '调查', sub: 'INV', action: () => setIsInvestigating(!isInvestigating), active: isInvestigating },
-    { id: 'log', label: '历史', sub: 'LOG', action: onOpenHistory, active: false },
-    { id: 'opt', label: '设置', sub: 'OPT', action: onOpenSettings, active: false },
+    { id: 'auto', label: '自动', action: onToggleAuto, active: isAuto },
+    { id: 'skip', label: '快进', action: onToggleSkip, active: isSkip },
+    { id: 'investigate', label: '勘验', action: () => setIsInvestigating(!isInvestigating), active: isInvestigating },
+    { id: 'log', label: '案录', action: onOpenHistory, active: false },
+    { id: 'opt', label: '仪轨', action: onOpenSettings, active: false },
   ];
 
   return (
-    <div className="absolute bottom-0 left-0 w-full z-20 pointer-events-none">
+    <div className="absolute bottom-0 left-0 w-full z-20 pointer-events-none font-serif">
       <div className="w-full relative pointer-events-auto">
         
-        {/* Name Plate (Floating above text box) */}
-        <div className="absolute -top-5 left-4 z-30">
+        {/* 说话者姓名牌 — 仿古朱漆木雕名贴 */}
+        <div className="absolute -top-7 left-6 sm:left-10 z-30">
           <motion.div 
-            key={character?.id}
-            initial={{ y: 5, opacity: 0 }}
+            key={character?.id || 'speaker'}
+            initial={{ y: 6, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className={`bg-ink-900/40 px-4 py-1 relative overflow-hidden rounded-t-sm`}
+            className="bg-[#1c130b]/95 border-2 border-b-0 border-[#78591c] px-5 py-1.5 rounded-t-xs shadow-lg flex items-center gap-2"
           >
-            <div className={`absolute inset-0 opacity-20 bg-gradient-to-t ${isCyan ? 'from-cyan-500' : 'from-vermilion-500'} to-transparent`} />
-            <div className="flex items-baseline gap-2 relative z-10">
-              <span className={`font-serif text-xl tracking-[0.1em] font-medium drop-shadow-md ${isCyan ? 'text-cyan-300' : 'text-vermilion-300'}`}>
-                {character?.name || '未知'}
+            <span className="w-1.5 h-1.5 rounded-full bg-vermilion-800" />
+            <span className="font-serif text-lg tracking-[0.2em] font-bold text-paper-50 drop-shadow-md">
+              {character?.name || '旁白'}
+            </span>
+            {character?.title && (
+              <span className="font-serif text-xs tracking-wider text-gold-300 opacity-80 border-l border-[#52432d] pl-2">
+                {character.title.split('·')[0]}
               </span>
-              {character?.title && (
-                <span className="font-sans text-[10px] tracking-widest text-ink-400 uppercase opacity-80">
-                  {character.title.split('·')[0]}
-                </span>
-              )}
-            </div>
+            )}
           </motion.div>
         </div>
 
-        {/* Main Text Box (Flush to bottom) */}
+        {/* 宣纸古风对白底框 */}
         <div 
           onClick={handleClick}
-          className={`relative w-full h-[200px] bg-transparent cursor-pointer overflow-hidden px-10 pt-10 pb-6 ${isInvestigating ? 'border border-gold-500/50 bg-ink-900/40' : ''}`}
+          className={`relative w-full min-h-[190px] max-h-[260px] bg-linear-to-t from-[#0c0805]/98 via-[#130d08]/92 to-[#1a120b]/75 border-t border-[#52432d] cursor-pointer overflow-hidden px-8 sm:px-14 pt-8 pb-8 shadow-[0_-10px_30px_rgba(0,0,0,0.85)] ${isInvestigating ? 'border-2 border-vermilion-800 bg-[#1a0a08]/90' : ''}`}
           id="dialogue-box"
         >
           {isInvestigating && (
-            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-gold-400 font-sans text-xs tracking-widest animate-pulse">
-              调查模式已开启，请长按或滑动选择文本
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-vermilion-400 font-serif text-xs tracking-widest animate-pulse font-bold bg-[#140604] px-4 py-0.5 border border-vermilion-800 rounded-xs">
+              【勘验模式已开启 · 划词选录线索】
             </div>
           )}
-          {/* Subtle accent glow on the left edge instead of top */}
-          <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-1/2 ${isCyan ? 'bg-cyan-500' : 'bg-vermilion-500'} opacity-30 blur-[1px]`} />
+
+          {/* 左侧朱砂古籍装订朱红细线 */}
+          <div className="absolute left-4 top-4 bottom-4 w-0.5 bg-linear-to-b from-vermilion-800 via-gold-500/60 to-transparent" />
           
-          {/* Dialogue Text */}
+          {/* 对白正文（大字清晰、水墨宣纸韵味） */}
           <div 
-            className={`font-sans text-[22px] tracking-[0.1em] leading-[2] text-paper-100 font-light relative z-10 max-w-[85%] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] cursor-text ${isInvestigating ? 'select-text' : 'select-none'}`}
+            className={`font-serif text-[20px] sm:text-[22px] tracking-[0.08em] leading-[1.8] text-paper-100 font-medium relative z-10 max-w-[88%] drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] cursor-text ${isInvestigating ? 'select-text' : 'select-none'}`}
             style={isInvestigating ? { WebkitTouchCallout: 'default', WebkitUserSelect: 'text', userSelect: 'text' } : {}}
           >
             {displayedText}
-            {/* Blinking cursor when done typing */}
             {!isTyping && (
               <motion.span 
                 animate={{ opacity: [1, 0, 1] }} 
-                transition={{ repeat: Infinity, duration: 1.2 }}
-                className={`inline-block w-3 h-5 ml-2 align-middle ${isCyan ? 'bg-cyan-400' : 'bg-vermilion-400'}`}
+                transition={{ repeat: Infinity, duration: 1.1 }}
+                className="inline-block w-2.5 h-4 ml-2 align-middle bg-gold-300"
               />
             )}
           </div>
           
-          {/* Galgame Quick Controls (Bottom Right) */}
-          <div className="absolute bottom-6 right-12 flex items-center gap-6 z-30 pointer-events-auto">
+          {/* 右下角：仿古快捷操控木签（自动、快进、勘验、案录、仪轨） */}
+          <div className="absolute bottom-4 right-6 sm:right-10 flex items-center gap-2 z-30 pointer-events-auto select-none">
             {quickActions.map(btn => (
               <button 
                 key={btn.id}
                 onClick={(e) => { e.stopPropagation(); btn.action(); }}
-                className={`group flex flex-col items-center gap-1 transition-colors px-2 py-1 ${btn.active ? (isCyan ? 'text-cyan-400' : 'text-vermilion-400') : 'text-ink-500 hover:text-cyan-400'}`}
+                className={`px-2.5 py-1 rounded-xs font-serif text-xs tracking-widest border transition-all cursor-pointer ${
+                  btn.active 
+                    ? 'bg-vermilion-800 border-vermilion-600 text-paper-50 shadow-sm font-bold' 
+                    : 'bg-[#18110a]/90 border-[#4a3925] text-paper-500 hover:text-gold-300 hover:border-gold-700'
+                }`}
               >
-                <span className="font-sans text-[10px] tracking-[0.2em] uppercase transition-colors">
-                  {btn.sub}
-                </span>
-                <span className={`font-serif text-xs tracking-widest transition-all duration-300 transform ${btn.active ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'}`}>
-                  {btn.label}
-                </span>
+                {btn.label}
               </button>
             ))}
           </div>

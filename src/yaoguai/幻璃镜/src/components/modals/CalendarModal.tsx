@@ -1,29 +1,30 @@
 import React, { useState, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
-import { Clock, CloudRain, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, CloudRain, Moon, ChevronLeft, ChevronRight, Compass, Sparkles, Shield, Sun } from 'lucide-react';
+import { cn } from '../../utils';
 
 interface CalendarModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-// 古代时辰对应表（每个时辰对应2小时）
-const SHICHEN_MAP: { range: [number, number]; name: string; period: string }[] = [
-  { range: [23, 1], name: '子时', period: '夜半' },
-  { range: [1, 3], name: '丑时', period: '鸡鸣' },
-  { range: [3, 5], name: '寅时', period: '平旦' },
-  { range: [5, 7], name: '卯时', period: '日出' },
-  { range: [7, 9], name: '辰时', period: '食时' },
-  { range: [9, 11], name: '巳时', period: '隅中' },
-  { range: [11, 13], name: '午时', period: '日中' },
-  { range: [13, 15], name: '未时', period: '日昳' },
-  { range: [15, 17], name: '申时', period: '晡时' },
-  { range: [17, 19], name: '酉时', period: '日入' },
-  { range: [19, 21], name: '戌时', period: '黄昏' },
-  { range: [21, 23], name: '亥时', period: '人定' },
+// 十二时辰详细配置
+const SHICHEN_MAP: { range: [number, number]; name: string; period: string; element: string; organ: string }[] = [
+  { range: [23, 1], name: '子时', period: '夜半', element: '水', organ: '胆经' },
+  { range: [1, 3], name: '丑时', period: '鸡鸣', element: '土', organ: '肝经' },
+  { range: [3, 5], name: '寅时', period: '平旦', element: '木', organ: '肺经' },
+  { range: [5, 7], name: '卯时', period: '日出', element: '木', organ: '大肠' },
+  { range: [7, 9], name: '辰时', period: '食时', element: '土', organ: '胃经' },
+  { range: [9, 11], name: '巳时', period: '隅中', element: '火', organ: '脾经' },
+  { range: [11, 13], name: '午时', period: '日中', element: '火', organ: '心经' },
+  { range: [13, 15], name: '未时', period: '日昳', element: '土', organ: '小肠' },
+  { range: [15, 17], name: '申时', period: '晡时', element: '金', organ: '膀胱' },
+  { range: [17, 19], name: '酉时', period: '日入', element: '金', organ: '肾经' },
+  { range: [19, 21], name: '戌时', period: '黄昏', element: '土', organ: '心包' },
+  { range: [21, 23], name: '亥时', period: '人定', element: '水', organ: '三焦' },
 ];
 
-function getShichen(hour: number): { name: string; period: string } {
+function getShichen(hour: number) {
   const h = hour === 23 ? 23 : hour;
   const found = SHICHEN_MAP.find(s => {
     if (s.range[0] > s.range[1]) {
@@ -31,58 +32,48 @@ function getShichen(hour: number): { name: string; period: string } {
     }
     return h >= s.range[0] && h < s.range[1];
   });
-  return found || { name: '子时', period: '夜半' };
+  return found || { name: '子时', period: '夜半', element: '水', organ: '胆经' };
 }
 
-// 获取月份天数（农历大月30天、小月29天，这里简化用实际月份天数计算）
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
 
-// 获取月份第一天是星期几（0=周日）
 function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
-// 古代月份名
-const ANCIENT_MONTHS = ['正月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '冬月', '腊月'];
+const ANCIENT_MONTHS = ['孟春·端月', '仲春·花月', '季春·桃月', '孟夏·梅月', '仲夏·蒲月', '季夏·荷月', '孟秋·兰月', '仲秋·桂月', '季秋·菊月', '孟冬·葭月', '仲冬·畅月', '季冬·冰月'];
+const LUNAR_DAY_NAMES = ['初一', '初二', '初三', '初四', '初五', '初六', '初七', '初八', '初九', '初十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十', '廿一', '廿二', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '廿九', '三十'];
+const WEEKDAYS_ANCIENT = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
 
-// 星期古代称谓
-const WEEKDAYS_ANCIENT = ['日', '一', '二', '三', '四', '五', '六'];
-
-// ============================================================
-// 游戏内时间 — 来自世界书设定的架空明朝"永明"年间
-// 这些是游戏内的虚构时间，不是现实时间
-// ============================================================
 const GAME_TIME = {
-  era: '永明',           // 年号（来自世界书: 世界设定.时代背景.年号）
-  year: 3,               // 永明三年
-  month: 8,              // 八月（0-indexed: 7）
-  day: 15,               // 十五
-  hour: 19,              // 戌时（19:00-21:00）
+  era: '大雍·永安',
+  ganzhiYear: '甲辰年',
+  ganzhiMonth: '壬申月',
+  ganzhiDay: '丙戌日',
+  solarTerm: '白露将至 · 荧惑守心',
+  year: 23,
+  month: 7, // 0-indexed => 8月
+  day: 15,
+  hour: 19,
   minute: 0,
-  weekday: 4,            // 星期四（0=日）
-  weather: '秋雨',
+  weekday: 4,
+  weather: '夜雨微凉',
+  yi: ['勘案理绪', '访友求卜', '密札合券', '调息静坐'],
+  ji: ['涉险渡江', '轻启封印', '喧嚣动土', '贪功冒进'],
 };
 
-// 将游戏内小时转为现代时间字符串（用于给玩家对照）
-function hourToModernStr(hour: number, minute: number): string {
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
+// 永安年号最底限：不允许调到一年以下
+const MIN_ERA_YEAR = 1;
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({ isOpen, onClose }) => {
-  // 游戏内当前时辰
   const shichen = getShichen(GAME_TIME.hour);
-  const modernTimeStr = hourToModernStr(GAME_TIME.hour, GAME_TIME.minute);
-
-  // 日历翻页状态 — 基于游戏内年月
   const [viewEraYear, setViewEraYear] = useState(GAME_TIME.year);
   const [viewMonth, setViewMonth] = useState(GAME_TIME.month);
   const isCurrentMonth = viewEraYear === GAME_TIME.year && viewMonth === GAME_TIME.month;
 
-  // 用游戏内年月计算日历网格（以永明年号映射到真实年份做日历计算）
-  // 永明元年对应 baseYear，这样日历星期布局是固定的
-  const baseYear = 2000 + GAME_TIME.year; // 永明三年 => 2003
+  const baseYear = 2000 + GAME_TIME.year;
   const calcYear = baseYear + (viewEraYear - GAME_TIME.year);
   const calcMonth = viewMonth;
 
@@ -91,8 +82,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ isOpen, onClose })
 
   const handlePrevMonth = () => {
     if (viewMonth === 0) {
+      if (viewEraYear <= MIN_ERA_YEAR) return; // 不允许调到一年以下
       setViewMonth(11);
-      setViewEraYear(y => y - 1);
+      setViewEraYear(y => Math.max(MIN_ERA_YEAR, y - 1));
     } else {
       setViewMonth(m => m - 1);
     }
@@ -107,117 +99,125 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({ isOpen, onClose })
     }
   };
 
-  const handlePrevYear = () => setViewEraYear(y => y - 1);
-  const handleNextYear = () => setViewEraYear(y => y + 1);
-
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const emptySlots = Array.from({ length: firstDayOffset }, (_, i) => i);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="日 期 与 时 间" id="calendar-modal">
-      <div className="flex flex-col gap-6 h-[600px]">
-        {/* Top Info Banner — 游戏内时间 + 古代时辰 */}
-        <div className="bg-gradient-to-r from-ink-900 via-cyan-900/20 to-ink-900 border border-cyan-900/50 rounded-xl p-6 flex justify-between items-center relative overflow-hidden shrink-0">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2" />
+    <Modal isOpen={isOpen} onClose={onClose} title="大 统 皇 极 历 · 岁 时 通 书" id="calendar-modal">
+      <div className="flex flex-col gap-5 text-paper-100">
+        {/* 顶部天象牌匾 */}
+        <div className="bg-[#14100c] border border-[#6b583e] rounded-xs p-3 sm:p-5 relative overflow-hidden shadow-lg">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-gold-500/5 rounded-full blur-3xl pointer-events-none" />
           
-          {/* 左侧：游戏内日期 */}
-          <div className="flex flex-col gap-2">
-            <h3 className="font-serif text-3xl tracking-widest text-gold-400">
-              {GAME_TIME.era}{viewEraYear}年 {viewMonth + 1}月 {GAME_TIME.day}日
-            </h3>
-            <p className="font-sans text-sm tracking-[0.2em] text-cyan-300">
-              星期{WEEKDAYS_ANCIENT[GAME_TIME.weekday]}
-            </p>
-            <p className="font-serif text-sm tracking-widest text-paper-200/60">
-              {ANCIENT_MONTHS[viewMonth]}
-            </p>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
+            {/* 左侧：纪年与干支 */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 text-[11px] font-serif border border-vermilion-700 text-vermilion-400 bg-[#24100c] rounded-xs">
+                  司天监颁历
+                </span>
+                <span className="text-[12px] font-serif text-paper-400">
+                  {GAME_TIME.solarTerm}
+                </span>
+              </div>
+              <h3 className="font-serif text-lg sm:text-2xl tracking-[0.15em] sm:tracking-[0.2em] text-gold-300 font-bold mt-1">
+                {GAME_TIME.era}{viewEraYear}年 · {ANCIENT_MONTHS[viewMonth]}
+              </h3>
+              <p className="font-serif text-xs text-paper-500 tracking-widest">
+                岁次 {GAME_TIME.ganzhiYear} 【{GAME_TIME.ganzhiMonth}】 {GAME_TIME.ganzhiDay} · {WEEKDAYS_ANCIENT[GAME_TIME.weekday]}
+              </p>
+            </div>
+
+            {/* 右侧：时辰天机盘 */}
+            <div className="flex items-center gap-2 sm:gap-4 bg-[#1f1912] border border-[#52432d] px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xs shrink-0">
+              <div className="flex flex-col items-center">
+                <CloudRain size={16} className="text-cyan-300 sm:w-5 sm:h-5" />
+                <span className="font-serif text-[10px] sm:text-[11px] text-paper-400 mt-0.5 sm:mt-1">{GAME_TIME.weather}</span>
+              </div>
+              <div className="w-px h-6 sm:h-8 bg-[#423522]" />
+              <div className="flex flex-col items-center">
+                <Moon size={16} className="text-gold-300 sm:w-5 sm:h-5" />
+                <span className="font-serif text-xs sm:text-[13px] font-bold text-gold-300 mt-0.5">{shichen.name}（{shichen.period}）</span>
+                <span className="font-serif text-[9px] sm:text-[10px] text-paper-500">{shichen.element}行 · 司{shichen.organ}</span>
+              </div>
+            </div>
           </div>
-          
-          {/* 右侧：时间信息 — 现代 + 古代 */}
-          <div className="flex items-center gap-6 text-paper-200">
-            {/* 天气 */}
-            <div className="flex flex-col items-center gap-2">
-              <CloudRain size={28} className="text-cyan-500" />
-              <span className="font-serif text-sm tracking-widest">{GAME_TIME.weather}</span>
+
+          {/* 宜忌条目 */}
+          <div className="mt-4 pt-3 border-t border-[#3a2e1e] grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-serif">
+            <div className="flex items-center gap-2 bg-[#192219]/60 px-3 py-1.5 border border-jade-500/40 rounded-xs">
+              <span className="px-1.5 py-0.5 text-[10px] bg-jade-500 text-white font-bold rounded-xs">宜</span>
+              <span className="text-paper-400 tracking-wider">{GAME_TIME.yi.join(' · ')}</span>
             </div>
-            <div className="w-px h-12 bg-ink-700" />
-            {/* 现代时间（对照用） */}
-            <div className="flex flex-col items-center gap-2">
-              <Clock size={28} className="text-cyan-400" />
-              <span className="font-serif text-lg tracking-widest text-cyan-300">{modernTimeStr}</span>
-              <span className="font-sans text-[10px] tracking-widest text-paper-200/50">现代</span>
-            </div>
-            <div className="w-px h-12 bg-ink-700" />
-            {/* 古代时辰 */}
-            <div className="flex flex-col items-center gap-2">
-              <Moon size={28} className="text-gold-500" />
-              <span className="font-serif text-lg tracking-widest text-gold-400">{shichen.name}</span>
-              <span className="font-sans text-[10px] tracking-widest text-paper-200/50">{shichen.period}</span>
+            <div className="flex items-center gap-2 bg-[#261210]/60 px-3 py-1.5 border border-vermilion-700/40 rounded-xs">
+              <span className="px-1.5 py-0.5 text-[10px] bg-vermilion-700 text-white font-bold rounded-xs">忌</span>
+              <span className="text-paper-400 tracking-wider">{GAME_TIME.ji.join(' · ')}</span>
             </div>
           </div>
         </div>
 
-        {/* Calendar */}
-        <div className="flex-1 bg-ink-900 border border-ink-700/50 rounded-xl p-6 flex flex-col">
-          {/* 年月翻页 */}
-          <div className="flex justify-between items-center mb-2">
-            {/* 上一年 */}
-            <button onClick={handlePrevYear} className="p-2 text-ink-500 hover:text-gold-400 transition-colors">
+        {/* 皇极经世日历网格 */}
+        <div className="bg-[#181410] border border-[#6b583e] rounded-xs p-3 sm:p-5 flex flex-col">
+          {/* 月份切换 */}
+          <div className="flex justify-between items-center mb-4 pb-3 border-b border-[#3a2e1e]">
+            <button 
+              id="btn-calendar-prev-month"
+              onClick={handlePrevMonth} 
+              className="p-1.5 text-paper-400 hover:text-gold-300 bg-[#241e17] border border-[#52432d] rounded-xs transition-colors"
+            >
               <ChevronLeft size={16} />
-              <ChevronLeft size={16} className="-ml-3" />
             </button>
-            {/* 上个月 */}
-            <button onClick={handlePrevMonth} className="p-2 text-ink-500 hover:text-gold-400 transition-colors">
-              <ChevronLeft size={20} />
-            </button>
-            {/* 年月标题 */}
-            <div className="flex flex-col items-center">
-              <h4 className="font-serif text-lg text-paper-200 tracking-widest">
-                {GAME_TIME.era}{viewEraYear}年 {viewMonth + 1}月
-              </h4>
-              <span className="font-serif text-xs text-gold-500/60 tracking-widest mt-0.5">
-                {ANCIENT_MONTHS[viewMonth]}
+            
+            <div className="text-center">
+              <span className="font-serif text-base font-bold text-gold-300 tracking-widest">
+                {ANCIENT_MONTHS[viewMonth]}（农历八月）
               </span>
             </div>
-            {/* 下个月 */}
-            <button onClick={handleNextMonth} className="p-2 text-ink-500 hover:text-gold-400 transition-colors">
-              <ChevronRight size={20} />
-            </button>
-            {/* 下一年 */}
-            <button onClick={handleNextYear} className="p-2 text-ink-500 hover:text-gold-400 transition-colors">
+
+            <button 
+              id="btn-calendar-next-month"
+              onClick={handleNextMonth} 
+              className="p-1.5 text-paper-400 hover:text-gold-300 bg-[#241e17] border border-[#52432d] rounded-xs transition-colors"
+            >
               <ChevronRight size={16} />
-              <ChevronRight size={16} className="-ml-3" />
             </button>
           </div>
-          
+
           {/* 星期表头 */}
-          <div className="grid grid-cols-7 gap-2 mb-4 text-center font-serif text-ink-500 text-sm">
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-2 text-center font-serif text-paper-500 text-[10px] sm:text-xs">
             <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
           </div>
-          
-          {/* 日期网格 */}
-          <div className="grid grid-cols-7 gap-2 flex-1">
-            {/* 空位偏移 */}
+
+          {/* 日子矩阵 */}
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
             {emptySlots.map((_, i) => (
-              <div key={`empty-${i}`} className="aspect-square" />
+              <div key={`empty-${i}`} className="h-10 sm:h-14 opacity-20 border border-transparent" />
             ))}
             
             {days.map(day => {
               const isToday = isCurrentMonth && day === GAME_TIME.day;
+              const lunarName = LUNAR_DAY_NAMES[(day - 1) % 30] || '初一';
               return (
                 <div 
                   key={day} 
-                  className={`aspect-square flex flex-col items-center justify-center rounded-lg border transition-colors cursor-pointer
-                    ${isToday 
-                      ? 'bg-gold-500/20 border-gold-500 text-gold-400 shadow-[0_0_15px_rgba(214,183,90,0.2)]' 
-                      : 'bg-ink-800/30 border-ink-800 text-paper-200 hover:border-gold-500/50 hover:bg-ink-800'
-                    }
-                  `}
+                  id={`calendar-day-${day}`}
+                  className={cn(
+                    "h-10 sm:h-14 flex flex-col items-center justify-center rounded-xs border transition-all relative cursor-pointer group",
+                    isToday 
+                      ? 'bg-[#382b18] border-gold-500 text-paper-50 shadow-[0_0_15px_rgba(197,164,63,0.3)]' 
+                      : 'bg-[#1e1812] border-[#382b1d] text-paper-400 hover:border-[#8a7556] hover:bg-[#282118]'
+                  )}
                 >
-                  <span className="font-sans text-lg">{day}</span>
-                  <span className="font-serif text-[10px] opacity-70">
-                    {isToday ? '今日' : ''}
+                  <span className="font-serif text-sm font-bold">{day}</span>
+                  <span className={cn(
+                    "font-serif text-[10px] tracking-wider",
+                    isToday ? "text-gold-300 font-bold" : "text-paper-600"
+                  )}>
+                    {isToday ? '今夕' : lunarName}
                   </span>
+                  {isToday && (
+                    <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-vermilion-400" />
+                  )}
                 </div>
               );
             })}

@@ -1,9 +1,4 @@
-import React, { useState } from 'react';
-import {
-  Maximize2, Minimize2, Brain, Database,
-  BookText, Trash2, RefreshCw, Settings as SettingsIcon,
-  ChevronDown, ChevronUp, HelpCircle, Calendar,
-} from 'lucide-react';
+import React, { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../utils';
 import { FloorSelector } from './FloorSelector';
@@ -19,234 +14,279 @@ interface HUDProps {
   onOpenSettings: () => void;
   onOpenManual: () => void;
   onOpenCalendar: () => void;
+  onOpenClues?: () => void;
+  onOpenHarem?: () => void;
   onRegenerate: () => void;
   regenerating: boolean;
 }
 
-/** 水平工具栏按钮 — 小图标 + 古风标签 */
-function ToolButton({
-  onClick, title, icon, label, color, textColor, disabled, isMobile, isLarge,
+/** 仿古宣纸木牌按钮 — 纯正古风印鉴与木雕质感 */
+function TraditionalTagButton({
+  id, onClick, title, label, tagPrefix, colorStyle, disabled, isMobile, isLarge,
 }: {
+  id?: string;
   onClick: () => void;
   title: string;
-  icon: React.ReactNode;
   label: string;
-  color: string;
-  textColor: string;
+  tagPrefix?: string;
+  colorStyle: string;
   disabled?: boolean;
   isMobile?: boolean;
   isLarge?: boolean;
 }) {
   return (
     <button
+      id={id}
       onClick={onClick}
       disabled={disabled}
       title={title}
       className={cn(
-        "flex flex-col items-center gap-0.5 border border-ink-700/50 shrink-0 rounded",
-        "hover:scale-110 active:scale-95 transition-all",
-        isMobile ? "py-0.5 px-1" : isLarge ? "py-2 px-3" : "py-1 px-2",
-        color, textColor,
+        "flex items-center justify-center shrink-0 border transition-all relative group cursor-pointer select-none",
+        "hover:brightness-110 active:scale-95 shadow-[0_2px_8px_rgba(0,0,0,0.6)]",
+        isMobile ? "py-1 px-1.5 min-w-8.5" : isLarge ? "py-1.5 px-3 min-w-14.5" : "py-1 px-2.5 min-w-11",
+        colorStyle,
         disabled && "opacity-40 pointer-events-none",
       )}
     >
-      {icon}
-      <span className={cn(
-        "font-serif tracking-widest leading-none",
-        isMobile ? "text-[7px]" : isLarge ? "text-xs" : "text-[8px]",
-      )}>{label}</span>
+      {/* 四角仿古暗纹微角 */}
+      <div className="absolute top-0.5 left-0.5 w-1 h-1 border-t border-l border-current opacity-40 pointer-events-none" />
+      <div className="absolute top-0.5 right-0.5 w-1 h-1 border-t border-r border-current opacity-40 pointer-events-none" />
+      <div className="absolute bottom-0.5 left-0.5 w-1 h-1 border-b border-l border-current opacity-40 pointer-events-none" />
+      <div className="absolute bottom-0.5 right-0.5 w-1 h-1 border-b border-r border-current opacity-40 pointer-events-none" />
+
+      <div className="flex flex-col items-center justify-center gap-0.5">
+        {tagPrefix && (
+          <span className={cn(
+            "font-serif opacity-60 leading-none",
+            isMobile ? "text-[7px]" : isLarge ? "text-[10px]" : "text-[8px]"
+          )}>
+            {tagPrefix}
+          </span>
+        )}
+        <span className={cn(
+          "font-serif tracking-[0.2em] font-bold leading-none pl-[0.2em] whitespace-nowrap",
+          isMobile ? "text-[9px]" : isLarge ? "text-[13px]" : "text-[11px]",
+        )}>
+          {label}
+        </span>
+      </div>
     </button>
   );
 }
 
-/** 手机端图标尺寸 */
-const mi = "w-3 h-3";
-/** 桌面端图标尺寸 */
-const di = "w-4 h-4";
-/** 桌面端全屏图标尺寸 */
-const fi = "w-6 h-6";
-
 export function HUD({
   isFullscreen, onToggleFullscreen,
   onOpenThinking, onOpenVariables, onOpenReading, onOpenDelete,
-  onOpenSettings, onOpenManual, onOpenCalendar,
+  onOpenSettings, onOpenManual, onOpenCalendar, onOpenClues, onOpenHarem,
   onRegenerate, regenerating,
 }: HUDProps) {
   const isMobile = useIsMobile();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 鼠标滚轮垂直滚动 → HUD 水平滚动
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // 只在内容溢出时才转换
+    if (el.scrollWidth <= el.clientWidth) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }, []);
 
   // 全屏 + 桌面端 → 使用放大尺寸
   const isLarge = isFullscreen && !isMobile;
-  // 图标尺寸：全屏桌面端用 fi，否则用 di / mi
-  const ci = isLarge ? fi : isMobile ? mi : di;
-
-  // 分隔线高度
-  const sepHeight = isLarge ? "h-10" : "h-7";
+  const sepHeight = isLarge ? "h-9" : "h-7";
 
   return (
-    <div className={cn("z-40 pointer-events-auto", isMobile ? "relative w-full" : "fixed top-0 left-1/2 -translate-x-1/2")}>
+    <div className={cn("z-40 pointer-events-auto", isMobile ? "relative w-full" : "fixed top-0 left-1/2 -translate-x-1/2")} id="hud-navigation-bar">
       <AnimatePresence mode="wait">
         {(isCollapsed && !isMobile) ? (
-          /* ── 收起态：极小圆角按钮 ── */
+          /* ── 收起态：木匾印牌 ── */
           <motion.button
+            id="btn-hud-expand"
             key="collapsed"
             initial={{ y: -30, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -30, opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={() => setIsCollapsed(false)}
-            className="bg-ink-900/95 backdrop-blur-md border border-cyan-500/50 rounded-b-xl shadow-lg px-2 py-1 flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-transform"
-            title="展开工具栏"
+            className="bg-[#18120b] border-2 border-t-0 border-[#78591c] rounded-b-xs shadow-[0_8px_20px_rgba(0,0,0,0.8)] px-4 py-1.5 flex items-center gap-2 hover:brightness-110 active:scale-95 transition-all text-gold-300 cursor-pointer"
+            title="展布案牍仪轨"
           >
-            <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
-            <SettingsIcon className="w-3.5 h-3.5 text-paper-200/50" />
+            <span className="text-xs font-serif text-gold-500">▼</span>
+            <span className="text-xs font-serif tracking-[0.3em] font-bold text-paper-50 pl-[0.3em]">天 枢 案 牍</span>
           </motion.button>
         ) : (
-          /* ── 展开态：水平工具栏 ── */
+          /* ── 展开态：线装宣纸木雕案牍工具栏 ── */
           <motion.div
+            id="hud-toolbar-panel"
             key="expanded"
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -40, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className={cn(
-              "bg-ink-900/95 backdrop-blur-md border border-cyan-900/50",
-              isLarge ? "py-2.5 px-3" : "py-1.5 px-2",
+              "bg-[#150f0a]/95 backdrop-blur-md border border-[#52432d] border-t-0",
+              isLarge ? "py-2.5 px-4" : "py-1.5 px-3",
               isMobile
-                ? "w-full border-t-0"
-                : "rounded-b-xl shadow-lg shadow-black/50",
+                ? "w-full min-w-0 border-x-0"
+                : "rounded-b-xs shadow-[0_12px_35px_rgba(0,0,0,0.9)] border-t-0",
             )}
           >
-            <div className={cn("flex items-center", isMobile ? "gap-0.5 justify-between" : isLarge ? "gap-2" : "gap-1")}>
-              {/* 收起按钮 — 手机端不显示 */}
+            {/* 顶栏暗铜装订边线 */}
+            <div className="absolute top-0 inset-x-0 h-0.5 bg-linear-to-r from-transparent via-[#8a7047] to-transparent pointer-events-none" />
+
+            <div ref={scrollRef} onWheel={handleWheel} className={cn("flex items-center w-full min-w-0", isMobile ? "gap-1 justify-start overflow-x-auto hide-scrollbar py-0.5 [-webkit-overflow-scrolling:touch]" : isLarge ? "gap-2" : "gap-1.5")}>
+              
+              {/* 收起匾牌按钮 — 仅桌面端 */}
               {!isMobile && (
                 <button
+                  id="btn-hud-collapse"
                   onClick={() => setIsCollapsed(true)}
                   className={cn(
-                    "shrink-0 flex items-center justify-center bg-cyan-900/40 text-cyan-400 rounded hover:bg-cyan-800/60 transition-colors border border-cyan-900/50",
-                    isLarge ? "w-10 h-10" : "w-7 h-7",
+                    "shrink-0 flex items-center justify-center bg-[#20160d] text-gold-300 hover:text-paper-50 hover:bg-[#302115] transition-colors border border-[#6b5437] rounded-xs cursor-pointer",
+                    isLarge ? "w-8 h-8 text-xs font-serif" : "w-6 h-6 text-[10px] font-serif",
                   )}
-                  title="收起工具栏"
+                  title="收起案牍"
                 >
-                  <ChevronUp className={isLarge ? "w-5 h-5" : "w-3.5 h-3.5"} />
+                  ▲
                 </button>
               )}
 
-              {/* 分隔线 — 手机端隐藏 */}
-              {!isMobile && <div className={cn("w-px bg-ink-700 shrink-0", sepHeight)} />}
+              {!isMobile && <div className={cn("w-px bg-[#453624] shrink-0", sepHeight)} />}
 
-              {/* 核心操作 */}
-              <ToolButton
+              {/* 屏息全屏 */}
+              <TraditionalTagButton
+                id="btn-hud-fullscreen"
                 onClick={onToggleFullscreen}
-                title={isFullscreen ? "退出全屏" : "全屏模式"}
-                label={isFullscreen ? "退出" : "全屏"}
-                color="bg-ink-800 border-ink-700"
-                textColor="text-paper-200"
+                title={isFullscreen ? "退出屏息" : "全屏屏息"}
+                label={isFullscreen ? "常态" : "屏息"}
+                colorStyle="bg-[#1c140c] border-[#5e4930] text-paper-200 hover:border-[#a8894d]"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={isFullscreen ? <Minimize2 className={ci} /> : <Maximize2 className={ci} />}
               />
 
+              {/* 楼层导航 */}
               <FloorSelector isLarge={isLarge} />
 
-              {/* 分隔线 — 手机端隐藏 */}
-              {!isMobile && <div className={cn("w-px bg-ink-700 shrink-0", sepHeight)} />}
+              {!isMobile && <div className={cn("w-px bg-[#453624] shrink-0", sepHeight)} />}
 
-              <ToolButton
+              {/* 通书时历 */}
+              <TraditionalTagButton
+                id="btn-hud-calendar"
                 onClick={onOpenCalendar}
-                title="日期与时辰"
-                label="时辰"
-                color="bg-ink-800 border-gold-900/50"
-                textColor="text-gold-400"
+                title="岁时通书与时辰"
+                label="通书"
+                colorStyle="bg-[#24180d] border-[#8a6828] text-gold-300 hover:border-gold-500"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<Calendar className={ci} />}
               />
 
-              {/* 分隔线 — 手机端隐藏 */}
-              {!isMobile && <div className={cn("w-px bg-ink-700 shrink-0", sepHeight)} />}
+              {/* 密札推演 */}
+              {onOpenClues && (
+                <TraditionalTagButton
+                  id="btn-hud-clues"
+                  onClick={onOpenClues}
+                  title="案卷密札推演"
+                  label="密札"
+                  colorStyle="bg-[#220d0a] border-vermilion-800 text-vermilion-300 hover:border-vermilion-600"
+                  isMobile={isMobile}
+                  isLarge={isLarge}
+                />
+              )}
 
-              {/* 查看 */}
-              <ToolButton
+              {/* 红颜谱 */}
+              {onOpenHarem && (
+                <TraditionalTagButton
+                  id="btn-hud-harem"
+                  onClick={onOpenHarem}
+                  title="红颜画卷·灵魅谱"
+                  label="红颜"
+                  colorStyle="bg-[#260e0a] border-[#9c251b] text-vermilion-300 hover:border-vermilion-400"
+                  isMobile={isMobile}
+                  isLarge={isLarge}
+                />
+              )}
+
+              {!isMobile && <div className={cn("w-px bg-[#453624] shrink-0", sepHeight)} />}
+
+              {/* 剧情与思辨 */}
+              <TraditionalTagButton
+                id="btn-hud-history"
                 onClick={onOpenReading}
-                title="剧情回顾"
-                label="剧情"
-                color="bg-cyan-950/40 border-cyan-900/50"
-                textColor="text-cyan-300"
+                title="案情溯回录"
+                label="溯回"
+                colorStyle="bg-[#101b1b] border-[#225757] text-cyan-300 hover:border-cyan-700"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<BookText className={ci} />}
               />
-              <ToolButton
+
+              <TraditionalTagButton
+                id="btn-hud-thinking"
                 onClick={onOpenThinking}
-                title="思维链"
-                label="思维"
-                color="bg-cyan-950/40 border-cyan-900/50"
-                textColor="text-cyan-300"
+                title="灵境神识思维链"
+                label="神识"
+                colorStyle="bg-[#101b1b] border-[#225757] text-cyan-300 hover:border-cyan-700"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<Brain className={ci} />}
               />
-              <ToolButton
+
+              <TraditionalTagButton
+                id="btn-hud-variables"
                 onClick={onOpenVariables}
-                title="变量"
-                label="变量"
-                color="bg-gold-950/40 border-gold-900/50"
-                textColor="text-gold-300"
+                title="天机造化变量"
+                label="天机"
+                colorStyle="bg-[#241a0d] border-[#8a6828] text-[#e8c86b] hover:border-gold-500"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<Database className={ci} />}
               />
 
-              {/* 分隔线 — 手机端隐藏 */}
-              {!isMobile && <div className={cn("w-px bg-ink-700 shrink-0", sepHeight)} />}
+              {!isMobile && <div className={cn("w-px bg-[#453624] shrink-0", sepHeight)} />}
 
-              {/* 编辑 */}
-              <ToolButton
+              {/* 焚卷 */}
+              <TraditionalTagButton
+                id="btn-hud-delete-floor"
                 onClick={onOpenDelete}
-                title="删除楼层"
-                label="删除"
-                color="bg-vermilion-950/40 border-vermilion-900/50"
-                textColor="text-vermilion-400"
+                title="焚卷抽条（删除楼层）"
+                label="焚卷"
+                colorStyle="bg-[#220d09] border-[#881c14] text-[#e85a4a] hover:border-[#ba291d]"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<Trash2 className={ci} />}
               />
 
-              {/* 分隔线 — 手机端隐藏 */}
-              {!isMobile && <div className={cn("w-px bg-ink-700 shrink-0", sepHeight)} />}
+              {!isMobile && <div className={cn("w-px bg-[#453624] shrink-0", sepHeight)} />}
 
-              {/* 系统 */}
-              <ToolButton
+              {/* 系统与通鉴 */}
+              <TraditionalTagButton
+                id="btn-hud-regenerate"
                 onClick={onRegenerate}
-                title="重新生成"
-                label="重生成"
-                color="bg-ink-800 border-ink-700"
-                textColor="text-paper-200"
+                title="重新问卜推演"
+                label={regenerating ? "推演中" : "重演"}
                 disabled={regenerating}
+                colorStyle="bg-[#1c140c] border-[#5e4930] text-paper-200 hover:border-[#a8894d]"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<RefreshCw className={cn(ci, regenerating && "animate-spin")} />}
               />
-              <ToolButton
+
+              <TraditionalTagButton
+                id="btn-hud-settings"
                 onClick={onOpenSettings}
-                title="设置"
-                label="设置"
-                color="bg-cyan-950/40 border-cyan-900/50"
-                textColor="text-cyan-300"
+                title="仪轨设置"
+                label="仪轨"
+                colorStyle="bg-[#1a140f] border-[#5a4630] text-paper-400 hover:border-gold-700"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<SettingsIcon className={ci} />}
               />
-              <ToolButton
+
+              <TraditionalTagButton
+                id="btn-hud-manual"
                 onClick={onOpenManual}
-                title="说明书"
-                label="说明"
-                color="bg-gold-950/40 border-gold-900/50"
-                textColor="text-gold-300"
+                title="操作通鉴"
+                label="通鉴"
+                colorStyle="bg-[#241a0d] border-[#8a6828] text-[#e8c86b] hover:border-gold-500"
                 isMobile={isMobile}
                 isLarge={isLarge}
-                icon={<HelpCircle className={ci} />}
               />
             </div>
           </motion.div>

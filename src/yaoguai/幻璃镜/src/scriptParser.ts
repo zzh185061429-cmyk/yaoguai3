@@ -11,7 +11,8 @@
  *   角色名[情绪]:*内心独白*    → thought
  *   <user>:*内心独白*          → thought
  *   纯文本                     → narrator
- *   [scene:父地点/子地点]      → 场景标签（不显示，更新 location）
+ *   [scene:区域/分区/.../场景名] → 场景标签（不显示，更新 location）
+ *   [scene:场景名]              → 场景标签（短名，自动在模板池中查找）
  *   <achievement>ID</achievement> → 成就触发标签
  */
 
@@ -44,8 +45,11 @@ export interface ScriptLine {
   avatar?: string;
   /** 角色立绘 URL */
   sprite?: string;
-  /** 场景地点（由 [scene:父地点/子地点] 标签解析，后续句子继承） */
-  location?: { parent: string; spot?: string };
+  /** 场景地点路径（由 [scene:区域/分区/.../场景名] 标签解析，后续句子继承）
+   *  支持任意层级路径，如 "内城/北城/07肃王府/肃王府大门前庭"
+   *  也支持短名，如 "荒庙"（自动在模板池中查找）
+   */
+  location?: { path: string; displayName: string };
   /** 成就触发标识列表 */
   achievementTriggers?: string[];
 }
@@ -70,8 +74,8 @@ const THOUGHT_RE = /^(.+?)\[(.+?)\]:\*(.+)\*$/s;
 /** <user>:*内心独白* */
 const USER_THOUGHT_RE = /^<user>:\*(.+)\*$/s;
 
-/** [scene:父地点/子地点] 或 [scene:父地点] */
-const SCENE_RE = /^\[scene:([^/\]]+)(?:\/([^\]]+))?\]$/;
+/** [scene:区域/分区/.../场景名] 或 [scene:场景名] — 支持任意层级路径 */
+const SCENE_RE = /^\[scene:([^\]]+?)\]$/;
 
 /** <achievement>编号或ID</achievement> */
 const ACHIEVEMENT_RE = /^<achievement>([^<]+?)<\/achievement>$/;
@@ -153,19 +157,20 @@ export function parseScriptContent(rawText: string, playerName?: string): Script
   const segments = content.split(/\n/).filter(s => s.trim());
 
   const result: ScriptLine[] = [];
-  let currentLocation: { parent: string; spot?: string } | undefined;
+  let currentLocation: { path: string; displayName: string } | undefined;
   let pendingAchievements: string[] = [];
 
   for (const segment of segments) {
     const trimmed = segment.trim();
 
-    // 场景标签
+    // 场景标签：[scene:区域/分区/.../场景名] 或 [scene:场景名]
     const sceneMatch = trimmed.match(SCENE_RE);
     if (sceneMatch) {
-      currentLocation = {
-        parent: sceneMatch[1].trim(),
-        spot: sceneMatch[2]?.trim() || undefined,
-      };
+      const rawPath = sceneMatch[1].trim();
+      // 提取显示用的短名（路径最后一段）
+      const parts = rawPath.split('/').map(s => s.trim()).filter(Boolean);
+      const displayName = parts.length > 0 ? parts[parts.length - 1] : rawPath;
+      currentLocation = { path: rawPath, displayName };
       continue;
     }
 
@@ -358,13 +363,13 @@ const TIME_MAP: Record<string, 'day' | 'night'> = {
 
 /**
  * 从 AI 消息文本中提取 <scene_image> 标签内的场景图片信息
- * 格式：<scene_image>父地点/子地点/天气/时间</scene_image>
- * 或：<scene_image>父地点/子地点/时间</scene_image>（无天气）
- * 或：<scene_image>父地点/时间</scene_image>（无子地点无天气）
+ * 格式：<scene_image>区域/分区/.../场景名/天气/时间</scene_image>
+ * 或：<scene_image>区域/分区/.../场景名/时间</scene_image>（无天气）
+ * 或：<scene_image>场景名/时间</scene_image>（无路径无天气）
+ * 或：<scene_image>场景名</scene_image>（只有场景名）
  */
 export function parseSceneImageTag(rawText: string): {
-  parent?: string;
-  spot?: string;
+  path?: string;
   weather: 'sunny' | 'cloudy';
   time: 'day' | 'night';
 } | undefined {
@@ -372,35 +377,28 @@ export function parseSceneImageTag(rawText: string): {
   const match = cleaned.match(/<scene_image>([^<]+?)<\/scene_image>/);
   if (!match) return undefined;
 
-  const parts = match[1].trim().split('/').map(s => s.trim());
-  let parent: string | undefined;
-  let spot: string | undefined;
+  const parts = match[1].trim().split('/').map(s => s.trim()).filter(Boolean);
   let weather: 'sunny' | 'cloudy' = 'sunny';
   let time: 'day' | 'night' = 'day';
 
-  // 解析逻辑：根据段数判断
-  if (parts.length >= 2) {
-    // 判断最后两段是否是天气/时间
+  // 从末尾解析天气和时间
+  if (parts.length >= 1) {
     const last = parts[parts.length - 1];
-    const secondLast = parts[parts.length - 2];
-
-    // 尝试识别时间（最后一段）
     if (TIME_MAP[last]) {
       time = TIME_MAP[last];
       parts.pop();
     }
-
-    // 重新获取最后一段
+  }
+  if (parts.length >= 1) {
     const newLast = parts[parts.length - 1];
     if (WEATHER_MAP[newLast]) {
       weather = WEATHER_MAP[newLast];
       parts.pop();
     }
-
-    // 剩下的：父地点/子地点
-    if (parts.length >= 1) parent = parts[0];
-    if (parts.length >= 2) spot = parts[1];
   }
 
-  return { parent, spot, weather, time };
+  // 剩下的全部作为路径
+  const path = parts.length > 0 ? parts.join('/') : undefined;
+
+  return { path, weather, time };
 }

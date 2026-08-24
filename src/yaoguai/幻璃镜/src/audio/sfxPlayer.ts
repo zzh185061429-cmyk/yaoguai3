@@ -19,7 +19,7 @@ export type SfxId =
 
 // ── 角色语音 blip 频率映射（Hz）──
 const CHARACTER_BLIP_FREQ: Record<string, number> = {
-  '狐小九': 740,  // 狐仙 — 高音
+  '狐小九': 740,  // 高音
 };
 
 const DEFAULT_BLIP_FREQ = 660;
