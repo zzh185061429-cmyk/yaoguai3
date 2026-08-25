@@ -120,6 +120,7 @@ function schema_dump(compiler: webpack.Compiler) {
   if (!watcher) {
     watcher = watch('src', {
       awaitWriteFinish: true,
+<<<<<<< HEAD
       ignored: [
         '**/assets/**',
         '**/.aistudio/**',
@@ -127,6 +128,8 @@ function schema_dump(compiler: webpack.Compiler) {
         '**/dist/**',
         '**/*.map',
       ],
+=======
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
     }).on('all', (_event, path) => {
       if (path.endsWith('schema.ts')) {
         dump_debounced();
@@ -201,6 +204,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
     },
     devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
     watchOptions: {
+<<<<<<< HEAD
       ignored: [
         '**/dist/**',
         '**/node_modules/**',
@@ -211,6 +215,9 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         '**/导入到酒馆中/**',
       ],
       aggregateTimeout: 1000,
+=======
+      ignored: ['**/dist', '**/node_modules'],
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
     },
     entry: path.join(import.meta.dirname, entry.script),
     target: 'browserslist',
@@ -352,6 +359,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               ],
             },
             {
+<<<<<<< HEAD
               test: /\.(png|jpe?g|gif|webp|svg)$/i,
               type: 'asset/resource',
               generator: {
@@ -360,6 +368,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               exclude: /node_modules/,
             },
             {
+=======
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
               test: /\.ya?ml$/,
               loader: 'yaml-loader',
               options: { asStream: true },
@@ -440,6 +450,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           configFile: path.join(import.meta.dirname, 'tsconfig.json'),
         }),
       ],
+<<<<<<< HEAD
       alias: {
         // 强制所有 React 导入使用 production CJS 构建，避免 dev/prod 混用导致
         // motion (framer-motion) 内部 React context 为 null 的 "双重 React 实例" 问题
@@ -451,6 +462,9 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         'react/jsx-runtime$': path.join(path.dirname(require.resolve('react/package.json')), 'cjs', 'react-jsx-runtime.production.js'),
         'react/jsx-dev-runtime$': path.join(path.dirname(require.resolve('react/package.json')), 'cjs', 'react-jsx-runtime.production.js'),
       },
+=======
+      alias: {},
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
     },
     plugins: (entry.html === undefined
       ? [new MiniCssExtractPlugin()]
@@ -575,6 +589,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
 
       if (
         ['vue', 'vue-router'].every(key => request !== key) &&
+<<<<<<< HEAD
         ['pixi', 'react', 'vue', 'scheduler'].some(key => request.includes(key))
       ) {
         return callback();
@@ -601,6 +616,12 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       if (request === 'clsx' || request === 'tailwind-merge') {
         return callback();
       }
+=======
+        ['pixi', 'react', 'vue'].some(key => request.includes(key))
+      ) {
+        return callback();
+      }
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
       const global = {
         jquery: '$',
         lodash: '_',
@@ -617,6 +638,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       const cdn = {
         sass: 'https://jspm.dev/sass',
       };
+<<<<<<< HEAD
       // 检查 request 是否为 src/ 或 示例/ 下的目录名（webpack library 导出机制会生成此模块名）
       if (
         fs.existsSync(path.join(import.meta.dirname, 'src', request)) ||
@@ -627,6 +649,19 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       return callback(
         null,
         'module-import ' + (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${request}/+esm`),
+=======
+      const package_json = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf-8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const package_versions = { ...package_json.devDependencies, ...package_json.dependencies };
+      const version = package_versions[request]?.replace(/^[~^]/, '');
+      const versioned_request = /^[.\d]+$/.test(version) ? `${request}@${version}` : request;
+      return callback(
+        null,
+        'module-import ' +
+          (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${versioned_request}/+esm`),
+>>>>>>> bc44abea1c2f7980dd9a2d9b909b4ad64bc8bdee
       );
     },
   });
