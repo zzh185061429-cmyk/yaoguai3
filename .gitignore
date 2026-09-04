@@ -11,6 +11,7 @@ pnpm-debug.log*
 
 auto-imports.d.ts
 components.d.ts
+<<<<<<< HEAD
 
 # CG Studio 批量生图工具：运行数据（含 API Key）与测试产物不入库
 tools/cg-studio/data/
@@ -19,3 +20,5 @@ tools/cg-studio/_probe/
 # NAI Studio（cg-studio 姊妹工具）：运行数据（含 NAI token）与测试产物不入库
 tools/nai-studio/data/
 tools/nai-studio/_probe/
+=======
+>>>>>>> 9c69ceb712d475b9a9bd31fc9b787240061a05a5
