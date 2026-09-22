@@ -84,7 +84,10 @@
     "@vueuse/shared": "^14.4.0",
     "async-wait-until": "^2.0.31",
     "axios": "1.18.1",
+<<<<<<< HEAD
     "clsx": "^2.1.1",
+=======
+>>>>>>> 4a9344276d925a83e32726c58b9b05debdf4a8ad
     "compare-versions": "^6.1.1",
     "dedent": "^1.7.2",
     "gsap": "^3.15.0",
@@ -94,13 +97,19 @@
     "jsonrepair": "^3.15.0",
     "klona": "^2.0.6",
     "lodash": "^4.18.1",
+<<<<<<< HEAD
     "lucide-react": "^1.47.0",
     "motion": "^12.43.0",
+=======
+>>>>>>> 4a9344276d925a83e32726c58b9b05debdf4a8ad
     "pinia": "^3.0.4",
     "pixi.js": "^8.21.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+<<<<<<< HEAD
     "tailwind-merge": "^3.7.0",
+=======
+>>>>>>> 4a9344276d925a83e32726c58b9b05debdf4a8ad
     "toastr": "^2.1.4",
     "vue": "^3.5.43",
     "vue-final-modal": "^4.5.5",
